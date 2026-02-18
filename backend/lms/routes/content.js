@@ -32,7 +32,7 @@ const deleteVideoFile = (video_url) => {
 
 export default function contentRoutes(pool) {
   const router = Router();
-  const guard  = [requireAuth, requireRole('admin', 'training')];
+  const guard  = [requireAuth, requireRole('admin', 'training', 'trainer')];
 
   // ─── COURSES ──────────────────────────────────────────────────────────────
 
@@ -199,6 +199,18 @@ export default function contentRoutes(pool) {
           ${videoClause}
         WHERE id = $7 RETURNING *
       `, params);
+      if (!r.rows[0]) return res.status(404).json({ error: 'Lesson not found' });
+      res.json(r.rows[0]);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // PATCH /lessons/:id/toggle-active — toggle lesson visibility
+  router.patch('/lessons/:id/toggle-active', ...guard, async (req, res) => {
+    try {
+      const r = await pool.query(
+        'UPDATE lms_lessons SET is_active = NOT is_active, updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING *',
+        [req.user.id, req.params.id]
+      );
       if (!r.rows[0]) return res.status(404).json({ error: 'Lesson not found' });
       res.json(r.rows[0]);
     } catch (err) { res.status(500).json({ error: err.message }); }

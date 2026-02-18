@@ -13,14 +13,16 @@ import contentRoutes         from './lms/routes/content.js';
 import adminApiRoutes        from './lms/routes/adminApi.js';
 import learnerApiRoutes      from './lms/routes/learnerApi.js';
 import physicalTrainingRoutes from './lms/routes/physicalTraining.js';
+import calendarRoutes         from './lms/routes/calendar.js';
+import { readFileSync } from 'fs';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // Serve uploaded videos — must be before route handlers
@@ -47,9 +49,25 @@ const pool = new pg.Pool({
   options: '--search_path=test'
 });
 
-pool.query('SELECT NOW()', (err, res) => {
+// Auto-run migration on startup (idempotent — uses IF NOT EXISTS)
+async function runMigration() {
+  try {
+    const migrationPath = `${__lms_dir}/migrations/001_department_trainer_calendar.sql`;
+    const sql = readFileSync(migrationPath, 'utf8');
+    await pool.query(sql);
+    console.log('✅ Migration applied successfully');
+  } catch (err) {
+    // Migration may fail if already applied — that's OK for IF NOT EXISTS statements
+    console.log('⚠️  Migration note:', err.message?.slice(0, 100));
+  }
+}
+
+pool.query('SELECT NOW()', async (err, res) => {
   if (err) console.error('❌ DB connection failed:', err.message);
-  else     console.log('✅ LMS DB connected:', res.rows[0].now);
+  else {
+    console.log('✅ LMS DB connected:', res.rows[0].now);
+    await runMigration();
+  }
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'cortex-lms' }));
@@ -64,6 +82,7 @@ app.use('/api/lms/admin/learner-types',     learnerTypeRoutes(pool));
 app.use('/api/lms/admin/learners',          learnerRoutes(pool));
 app.use('/api/lms/admin/content',           contentRoutes(pool));
 app.use('/api/lms/admin/physical-sessions', physicalTrainingRoutes(pool));
+app.use('/api/lms/admin/calendar',          calendarRoutes(pool));
 // Assignments + analytics + learner profile live in adminApi
 app.use('/api/lms/admin',                   adminApiRoutes(pool));
 

@@ -14,6 +14,17 @@ const ADMIN_NAV = [
   { href: '/lms/admin/content',            label: 'Content',           icon: 'book' },
   { href: '/lms/admin/assignments',        label: 'Assignments',       icon: 'link' },
   { href: '/lms/admin/physical-training',  label: 'Physical Training', icon: 'calendar' },
+  { href: '/lms/admin/calendar',           label: 'Calendar',          icon: 'calendar' },
+  { href: '/lms/admin/analytics',          label: 'Analytics',         icon: 'bar-chart' },
+];
+
+const TRAINER_NAV = [
+  { href: '/lms/trainer',                  label: 'Dashboard',         icon: 'grid' },
+  { href: '/lms/admin/content',            label: 'Content',           icon: 'book' },
+  { href: '/lms/admin/learners',           label: 'Learners',          icon: 'users' },
+  { href: '/lms/admin/assignments',        label: 'Assignments',       icon: 'link' },
+  { href: '/lms/admin/physical-training',  label: 'Physical Training', icon: 'calendar' },
+  { href: '/lms/admin/calendar',           label: 'Calendar',          icon: 'calendar' },
   { href: '/lms/admin/analytics',          label: 'Analytics',         icon: 'bar-chart' },
 ];
 
@@ -68,8 +79,9 @@ export default function LMSLayout({ children }) {
     </div>
   );
 
-  const isAdmin = user.role === 'admin' || user.role === 'training';
-  const nav     = isAdmin ? ADMIN_NAV : LEARNER_NAV;
+  const isAdmin   = user.role === 'admin' || user.role === 'training';
+  const isTrainer = user.role === 'trainer';
+  const nav       = isTrainer ? TRAINER_NAV : isAdmin ? ADMIN_NAV : LEARNER_NAV;
 
   const cycleTheme = () => {
     if (theme === 'system') setTheme('light');

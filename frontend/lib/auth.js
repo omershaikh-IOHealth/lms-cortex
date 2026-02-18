@@ -75,12 +75,12 @@ export async function apiFetch(path, options = {}) {
   return res;
 }
 
-// Multipart form upload (for video)
-export async function apiUpload(path, formData) {
+// Multipart form upload (for video) — supports POST and PUT
+export async function apiUpload(path, formData, method = 'POST') {
   const token = localStorage.getItem('lms_token');
   const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
   const res = await fetch(`${apiBase}${path}`, {
-    method: 'POST',
+    method,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData
   });

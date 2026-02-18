@@ -24,7 +24,10 @@ export default function authRoutes(pool) {
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-      const token = signToken({ id: user.id, email: user.email, role: user.role, name: user.display_name });
+      const token = signToken({
+        id: user.id, email: user.email, role: user.role, name: user.display_name,
+        staff_id: user.staff_id, departments: user.departments, specialties: user.specialties
+      });
 
       // httpOnly cookie + also return in body for localStorage fallback
       res.cookie('lms_token', token, {
@@ -34,7 +37,13 @@ export default function authRoutes(pool) {
         maxAge: 8 * 60 * 60 * 1000 // 8h
       });
 
-      res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.display_name } });
+      res.json({
+        token,
+        user: {
+          id: user.id, email: user.email, role: user.role, name: user.display_name,
+          staff_id: user.staff_id, departments: user.departments || [], specialties: user.specialties || []
+        }
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -50,7 +59,7 @@ export default function authRoutes(pool) {
   router.get('/me', requireAuth, async (req, res) => {
     try {
       const result = await pool.query(
-        'SELECT id, email, role, display_name, is_active FROM auth_users WHERE id = $1',
+        'SELECT id, email, role, display_name, is_active, staff_id, departments, specialties FROM auth_users WHERE id = $1',
         [req.user.id]
       );
       if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
