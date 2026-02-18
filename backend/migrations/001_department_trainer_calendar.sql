@@ -1,18 +1,28 @@
--- Migration: Add departments, specialties, staff_id, trainer role, and calendar integration
--- Run this against your Supabase (or PostgreSQL) database
+-- ============================================================================
+-- Migration 001: Departments, Specialties, Staff ID, Trainer role, Calendar
+-- Safe to run on BOTH fresh databases (after 000) and existing databases
+-- ============================================================================
 
--- 1. Add new columns to auth_users
-ALTER TABLE auth_users
-  ADD COLUMN IF NOT EXISTS staff_id VARCHAR(100),
-  ADD COLUMN IF NOT EXISTS departments TEXT[] DEFAULT '{}',
-  ADD COLUMN IF NOT EXISTS specialties TEXT[] DEFAULT '{}';
+-- 1. Add new columns to auth_users (safe — IF NOT EXISTS)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='test' AND table_name='auth_users' AND column_name='staff_id') THEN
+    ALTER TABLE auth_users ADD COLUMN staff_id VARCHAR(100);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='test' AND table_name='auth_users' AND column_name='departments') THEN
+    ALTER TABLE auth_users ADD COLUMN departments TEXT[] DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='test' AND table_name='auth_users' AND column_name='specialties') THEN
+    ALTER TABLE auth_users ADD COLUMN specialties TEXT[] DEFAULT '{}';
+  END IF;
+END $$;
 
--- 2. Update role constraint to include 'trainer'
+-- 2. Update role constraint to include 'trainer' (drop + re-add is idempotent)
 ALTER TABLE auth_users DROP CONSTRAINT IF EXISTS auth_users_role_check;
 ALTER TABLE auth_users ADD CONSTRAINT auth_users_role_check
   CHECK (role IN ('admin', 'support', 'training', 'learner', 'trainer'));
 
--- 3. Create departments reference table
+-- 3. Create reference tables (IF NOT EXISTS — safe on fresh + existing)
 CREATE TABLE IF NOT EXISTS lms_departments (
   id SERIAL PRIMARY KEY,
   name VARCHAR(200) NOT NULL UNIQUE,
@@ -22,7 +32,6 @@ CREATE TABLE IF NOT EXISTS lms_departments (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 4. Create specialties reference table
 CREATE TABLE IF NOT EXISTS lms_specialties (
   id SERIAL PRIMARY KEY,
   name VARCHAR(200) NOT NULL UNIQUE,
@@ -32,7 +41,7 @@ CREATE TABLE IF NOT EXISTS lms_specialties (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 5. Create calendar events table for Google Calendar integration
+-- 4. Calendar tables
 CREATE TABLE IF NOT EXISTS lms_calendar_events (
   id SERIAL PRIMARY KEY,
   title VARCHAR(500) NOT NULL,
@@ -55,7 +64,6 @@ CREATE TABLE IF NOT EXISTS lms_calendar_events (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 6. Create calendar event attendees
 CREATE TABLE IF NOT EXISTS lms_calendar_attendees (
   id SERIAL PRIMARY KEY,
   event_id INT REFERENCES lms_calendar_events(id) ON DELETE CASCADE,
@@ -65,7 +73,7 @@ CREATE TABLE IF NOT EXISTS lms_calendar_attendees (
   UNIQUE(event_id, user_id)
 );
 
--- 7. Seed default departments
+-- 5. Seed departments
 INSERT INTO lms_departments (name, description) VALUES
   ('Orthopedics', 'Orthopedic surgery and treatment'),
   ('Pediatrics', 'Children and adolescent medicine'),
@@ -78,7 +86,7 @@ INSERT INTO lms_departments (name, description) VALUES
   ('Administration', 'Hospital administration')
 ON CONFLICT (name) DO NOTHING;
 
--- 8. Seed default specialties
+-- 6. Seed specialties
 INSERT INTO lms_specialties (name, description) VALUES
   ('X-Ray Specialist', 'Radiographic imaging specialist'),
   ('MRI Technician', 'Magnetic resonance imaging technician'),
@@ -92,7 +100,7 @@ INSERT INTO lms_specialties (name, description) VALUES
   ('Surgical Nurse', 'Operating room nursing specialist')
 ON CONFLICT (name) DO NOTHING;
 
--- 9. Create indexes for filtering
+-- 7. Indexes
 CREATE INDEX IF NOT EXISTS idx_auth_users_departments ON auth_users USING gin(departments);
 CREATE INDEX IF NOT EXISTS idx_auth_users_specialties ON auth_users USING gin(specialties);
 CREATE INDEX IF NOT EXISTS idx_auth_users_staff_id ON auth_users(staff_id);

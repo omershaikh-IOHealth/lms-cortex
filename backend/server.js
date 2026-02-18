@@ -49,16 +49,21 @@ const pool = new pg.Pool({
   options: '--search_path=test'
 });
 
-// Auto-run migration on startup (idempotent — uses IF NOT EXISTS)
-async function runMigration() {
-  try {
-    const migrationPath = `${__lms_dir}/migrations/001_department_trainer_calendar.sql`;
-    const sql = readFileSync(migrationPath, 'utf8');
-    await pool.query(sql);
-    console.log('✅ Migration applied successfully');
-  } catch (err) {
-    // Migration may fail if already applied — that's OK for IF NOT EXISTS statements
-    console.log('⚠️  Migration note:', err.message?.slice(0, 100));
+// Auto-run schema setup on startup (idempotent — all CREATE IF NOT EXISTS)
+async function runMigrations() {
+  const files = [
+    `${__lms_dir}/migrations/000_full_schema.sql`,
+    `${__lms_dir}/migrations/001_department_trainer_calendar.sql`,
+  ];
+  for (const f of files) {
+    try {
+      const sql = readFileSync(f, 'utf8');
+      await pool.query(sql);
+      console.log(`✅ Applied: ${f.split('/').pop()}`);
+    } catch (err) {
+      // OK if objects already exist
+      console.log(`⚠️  ${f.split('/').pop()}: ${err.message?.slice(0, 120)}`);
+    }
   }
 }
 
@@ -66,7 +71,7 @@ pool.query('SELECT NOW()', async (err, res) => {
   if (err) console.error('❌ DB connection failed:', err.message);
   else {
     console.log('✅ LMS DB connected:', res.rows[0].now);
-    await runMigration();
+    await runMigrations();
   }
 });
 
