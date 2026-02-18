@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export default function adminApiRoutes(pool) {
   const router = Router();
-  const guard = [requireAuth, requireRole('admin', 'training')];
+  const guard = [requireAuth, requireRole('admin', 'training', 'trainer')];
 
   // ─── ASSIGNMENTS ─────────────────────────────────────────────────────────
 
@@ -53,12 +53,28 @@ export default function adminApiRoutes(pool) {
 
   // ─── ANALYTICS ───────────────────────────────────────────────────────────
 
-  // GET /api/lms/admin/progress/users — all learners summary table
+  // GET /api/lms/admin/progress/users — all learners summary table (with filters)
   router.get('/progress/users', ...guard, async (req, res) => {
     try {
+      const { department, specialty, learner_type } = req.query;
+      let whereExtra = '';
+      const params = [];
+      if (department) {
+        params.push(department);
+        whereExtra += ` AND $${params.length} = ANY(u.departments)`;
+      }
+      if (specialty) {
+        params.push(specialty);
+        whereExtra += ` AND $${params.length} = ANY(u.specialties)`;
+      }
+      if (learner_type) {
+        params.push(learner_type);
+        whereExtra += ` AND lt.name = $${params.length}`;
+      }
       const result = await pool.query(`
         SELECT
           u.id, u.email, u.display_name, u.is_active, u.created_at,
+          u.staff_id, u.departments, u.specialties,
           lt.name AS learner_type,
           COUNT(DISTINCT ulp.lesson_id) FILTER (WHERE ulp.completed = true)::int  AS completed_lessons,
           COUNT(DISTINCT ulp.lesson_id)::int                                       AS started_lessons,
@@ -71,10 +87,99 @@ export default function adminApiRoutes(pool) {
         LEFT JOIN lms_learner_profiles  lp  ON lp.user_id        = u.id
         LEFT JOIN lms_learner_types     lt  ON lp.learner_type_id = lt.id
         LEFT JOIN lms_user_lesson_progress ulp ON ulp.user_id    = u.id
-        WHERE u.role = 'learner'
+        WHERE u.role = 'learner' ${whereExtra}
         GROUP BY u.id, lt.name
         ORDER BY last_active DESC NULLS LAST
+      `, params);
+      res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/lms/admin/analytics/summary — aggregate stats by department/specialty/course
+  router.get('/analytics/summary', ...guard, async (req, res) => {
+    try {
+      const { department, specialty, learner_type } = req.query;
+      let whereExtra = '';
+      const params = [];
+      if (department) { params.push(department); whereExtra += ` AND $${params.length} = ANY(u.departments)`; }
+      if (specialty) { params.push(specialty); whereExtra += ` AND $${params.length} = ANY(u.specialties)`; }
+      if (learner_type) { params.push(learner_type); whereExtra += ` AND lt.name = $${params.length}`; }
+
+      // Department breakdown
+      const deptResult = await pool.query(`
+        SELECT dept, COUNT(DISTINCT u.id)::int AS learner_count,
+               COALESCE(SUM(ulp.total_watch_seconds), 0)::int AS total_watch_seconds,
+               COUNT(DISTINCT ulp.lesson_id) FILTER (WHERE ulp.completed = true)::int AS completed_lessons
+        FROM auth_users u, UNNEST(u.departments) AS dept
+        LEFT JOIN lms_user_lesson_progress ulp ON ulp.user_id = u.id
+        WHERE u.role = 'learner'
+        GROUP BY dept ORDER BY learner_count DESC
       `);
+
+      // Course completion rates
+      const courseResult = await pool.query(`
+        SELECT c.id, c.title AS course_title,
+               COUNT(DISTINCT ulp.user_id)::int AS active_learners,
+               COUNT(DISTINCT ulp.lesson_id) FILTER (WHERE ulp.completed = true)::int AS lessons_completed,
+               COUNT(DISTINCT l.id)::int AS total_lessons,
+               ROUND(AVG(ulp.percent_watched) FILTER (WHERE ulp.percent_watched > 0), 1) AS avg_progress
+        FROM lms_courses c
+        JOIN lms_sections s ON s.course_id = c.id
+        JOIN lms_lessons l ON l.section_id = s.id
+        LEFT JOIN lms_user_lesson_progress ulp ON ulp.lesson_id = l.id
+        GROUP BY c.id, c.title ORDER BY active_learners DESC
+      `);
+
+      // Learner type breakdown
+      const typeResult = await pool.query(`
+        SELECT lt.name AS learner_type,
+               COUNT(DISTINCT u.id)::int AS learner_count,
+               COALESCE(SUM(ulp.total_watch_seconds), 0)::int AS total_watch_seconds,
+               COUNT(DISTINCT ulp.lesson_id) FILTER (WHERE ulp.completed = true)::int AS completed_lessons
+        FROM auth_users u
+        LEFT JOIN lms_learner_profiles lp ON lp.user_id = u.id
+        LEFT JOIN lms_learner_types lt ON lp.learner_type_id = lt.id
+        LEFT JOIN lms_user_lesson_progress ulp ON ulp.user_id = u.id
+        WHERE u.role = 'learner'
+        GROUP BY lt.name ORDER BY learner_count DESC
+      `);
+
+      // Weekly activity (last 8 weeks)
+      const weeklyResult = await pool.query(`
+        SELECT
+          DATE_TRUNC('week', ulp.last_activity_at)::date AS week_start,
+          COUNT(DISTINCT ulp.user_id)::int AS active_learners,
+          COALESCE(SUM(ulp.total_watch_seconds), 0)::int AS watch_seconds
+        FROM lms_user_lesson_progress ulp
+        WHERE ulp.last_activity_at > NOW() - INTERVAL '8 weeks'
+        GROUP BY week_start ORDER BY week_start
+      `);
+
+      res.json({
+        byDepartment: deptResult.rows,
+        byCourse: courseResult.rows,
+        byLearnerType: typeResult.rows,
+        weeklyActivity: weeklyResult.rows,
+      });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/lms/admin/departments — list all departments
+  router.get('/departments', ...guard, async (req, res) => {
+    try {
+      const result = await pool.query(
+        'SELECT * FROM lms_departments WHERE is_active = true ORDER BY name'
+      );
+      res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/lms/admin/specialties — list all specialties
+  router.get('/specialties', ...guard, async (req, res) => {
+    try {
+      const result = await pool.query(
+        'SELECT * FROM lms_specialties WHERE is_active = true ORDER BY name'
+      );
       res.json(result.rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
@@ -85,6 +190,7 @@ export default function adminApiRoutes(pool) {
       const [userRes, progressRes, sessionsRes] = await Promise.all([
         pool.query(`
           SELECT u.id, u.email, u.display_name, u.is_active, u.created_at,
+                 u.staff_id, u.departments, u.specialties,
                  lt.name AS learner_type, lt.id AS learner_type_id,
                  lp.id AS profile_id
           FROM auth_users u

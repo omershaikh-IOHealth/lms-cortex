@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export default function learnerTypeRoutes(pool) {
   const router = Router();
-  router.use(requireAuth, requireRole('admin', 'training'));
+  router.use(requireAuth, requireRole('admin', 'training', 'trainer'));
 
   // GET /api/lms/admin/learner-types
   router.get('/', async (req, res) => {

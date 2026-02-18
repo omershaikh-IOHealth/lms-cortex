@@ -6,7 +6,7 @@ const COMPLETION_THRESHOLD = 80; // percent
 
 export default function learnerApiRoutes(pool) {
   const router = Router();
-  router.use(requireAuth, requireRole('learner', 'admin', 'training'));
+  router.use(requireAuth, requireRole('learner', 'admin', 'training', 'trainer'));
 
   // ─── CURRICULUM ──────────────────────────────────────────────────────────
 

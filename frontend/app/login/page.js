@@ -96,6 +96,7 @@ function redirectByRole(role, router) {
   switch (role) {
     case 'admin':
     case 'training': router.push('/lms/admin'); break;
+    case 'trainer':  router.push('/lms/trainer'); break;
     case 'learner':  router.push('/lms/learn'); break;
     case 'support':  router.push('/dashboard'); break;
     default:         router.push('/dashboard');

@@ -111,8 +111,9 @@ export default function ContentPage() {
       fd.append('is_active',       form.is_active ? 'true' : 'false');
       if (videoFile) fd.append('video', videoFile);
 
-      const url = isEdit ? `/api/lms/admin/content/lessons/${panel.data.id}` : '/api/lms/admin/content/lessons';
-      const r   = await apiUpload(url, fd);
+      const url    = isEdit ? `/api/lms/admin/content/lessons/${panel.data.id}` : '/api/lms/admin/content/lessons';
+      const method = isEdit ? 'PUT' : 'POST';
+      const r      = await apiUpload(url, fd, method);
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       await loadTree(selectedCourse.id);
@@ -156,10 +157,10 @@ export default function ContentPage() {
   };
 
   const toggleLessonActive = async (lesson) => {
-    await apiFetch(`/api/lms/admin/content/lessons/${lesson.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ is_active: !lesson.is_active })
-    }).then(r => r?.json());
+    await apiFetch(`/api/lms/admin/content/lessons/${lesson.id}/toggle-active`, {
+      method: 'PATCH',
+      body: '{}'
+    });
     await loadTree(selectedCourse.id);
   };
 
