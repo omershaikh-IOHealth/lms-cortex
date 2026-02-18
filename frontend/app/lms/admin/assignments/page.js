@@ -1,17 +1,19 @@
 // frontend/app/lms/admin/assignments/page.js
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/auth';
 
 export default function AssignmentsPage() {
-  const [types, setTypes] = useState([]);
+  const [types,        setTypes]        = useState([]);
   const [selectedType, setSelectedType] = useState(null);
-  const [assignments, setAssignments] = useState([]);
-  const [courses, setCourses] = useState([]);
-  const [tree, setTree] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState({});
+  const [courses,      setCourses]      = useState([]);
+  const [tree,         setTree]         = useState([]);
+  const [assignedIds,  setAssignedIds]  = useState(new Set());
+  const [loading,      setLoading]      = useState(false);
+  const [saving,       setSaving]       = useState({});   // lessonId → bool
+  const [search,       setSearch]       = useState('');
 
+  // Initial load: types + courses
   useEffect(() => {
     Promise.all([
       apiFetch('/api/lms/admin/learner-types').then(r => r?.json()),
@@ -22,123 +24,224 @@ export default function AssignmentsPage() {
     });
   }, []);
 
-  const loadAssignments = async (typeId) => {
+  const loadAssignmentsAndTree = useCallback(async (typeId) => {
+    if (!courses.length) return;
     setLoading(true);
-    const [a, ...treeParts] = await Promise.all([
+    setSearch('');
+    const [assignments, ...treeParts] = await Promise.all([
       apiFetch(`/api/lms/admin/assignments?learner_type_id=${typeId}`).then(r => r?.json()),
       ...courses.map(c => apiFetch(`/api/lms/admin/content/courses/${c.id}/tree`).then(r => r?.json()))
     ]);
-    if (a) setAssignments(a);
-    const allSections = treeParts.flatMap((t, i) =>
-      (t || []).map(s => ({ ...s, course: courses[i] }))
-    );
-    setTree(allSections);
+    if (assignments) setAssignedIds(new Set(assignments.map(a => a.lesson_id)));
+    const combined = treeParts.flatMap((t, i) => (t || []).map(s => ({ ...s, _course: courses[i] })));
+    setTree(combined);
     setLoading(false);
-  };
+  }, [courses]);
 
   useEffect(() => {
-    if (selectedType && courses.length) loadAssignments(selectedType.id);
-  }, [selectedType, courses.length]);
+    if (selectedType && courses.length) loadAssignmentsAndTree(selectedType.id);
+  }, [selectedType?.id, courses.length]);
 
-  const assignedLessonIds = new Set(assignments.map(a => a.lesson_id));
-
-  const toggleAssignment = async (lessonId, isAssigned) => {
+  const toggle = async (lessonId, isAssigned) => {
     setSaving(p => ({ ...p, [lessonId]: true }));
     try {
       if (isAssigned) {
         await apiFetch('/api/lms/admin/assignments', {
-          method: 'DELETE',
-          body: JSON.stringify({ learner_type_id: selectedType.id, lesson_id: lessonId })
+          method: 'DELETE', body: JSON.stringify({ learner_type_id: selectedType.id, lesson_id: lessonId })
         });
+        setAssignedIds(prev => { const n = new Set(prev); n.delete(lessonId); return n; });
       } else {
         await apiFetch('/api/lms/admin/assignments', {
-          method: 'POST',
-          body: JSON.stringify({ learner_type_id: selectedType.id, lesson_id: lessonId })
+          method: 'POST', body: JSON.stringify({ learner_type_id: selectedType.id, lesson_id: lessonId })
         });
+        setAssignedIds(prev => new Set([...prev, lessonId]));
       }
-      await loadAssignments(selectedType.id);
     } finally {
       setSaving(p => ({ ...p, [lessonId]: false }));
     }
   };
 
+  // Assign/unassign all lessons in a section
+  const toggleSection = async (lessons, shouldAssign) => {
+    const toChange = lessons.filter(l => shouldAssign ? !assignedIds.has(l.id) : assignedIds.has(l.id));
+    await Promise.all(toChange.map(l => toggle(l.id, !shouldAssign)));
+  };
+
+  // Flatten for search
+  const allLessons = tree.flatMap(s => (s.lessons || []).map(l => ({ ...l, _section: s.title, _course: s._course?.title })));
+  const searchFiltered = search.trim()
+    ? allLessons.filter(l => (l.title + l._section + l._course).toLowerCase().includes(search.toLowerCase()))
+    : null;
+
+  const totalAssigned = assignedIds.size;
+  const totalLessons  = allLessons.length;
+
+  // Group tree by course
+  const byCourse = courses.reduce((acc, c) => {
+    acc[c.id] = { course: c, sections: tree.filter(s => s._course?.id === c.id && !s.parent_section_id) };
+    return acc;
+  }, {});
+
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-white mb-6">Assignment Manager</h1>
-      <p className="text-gray-400 text-sm mb-6">Map lessons to learner types. Learners will only see lessons assigned to their type.</p>
+    <div className="flex h-full">
 
-      <div className="flex gap-6">
-        {/* Type selector */}
-        <div className="w-56 flex-shrink-0">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
-            <div className="text-xs text-gray-400 px-2 mb-2 font-medium uppercase tracking-wider">Learner Types</div>
-            {types.map(t => (
-              <button key={t.id} onClick={() => setSelectedType(t)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition mb-0.5 ${selectedType?.id === t.id ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
-                {t.name}
-              </button>
-            ))}
-            {!types.length && <div className="text-gray-500 text-sm px-2 py-4">No active types</div>}
-          </div>
+      {/* ── Left: type selector ──────────────────────────────────────────────── */}
+      <div className="w-56 flex-shrink-0 bg-cortex-surface border-r border-cortex-border flex flex-col">
+        <div className="px-4 py-3 border-b border-cortex-border">
+          <div className="text-xs font-semibold text-cortex-muted uppercase tracking-wider">Learner Types</div>
         </div>
-
-        {/* Lesson assignment panel */}
-        <div className="flex-1">
-          {!selectedType ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500">
-              Select a learner type to manage lesson assignments
-            </div>
-          ) : loading ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500">
-              Loading...
-            </div>
-          ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl">
-              <div className="p-4 border-b border-gray-800">
-                <h2 className="text-white font-semibold">Lessons for: <span className="text-blue-400">{selectedType.name}</span></h2>
-                <p className="text-gray-500 text-xs mt-1">{assignedLessonIds.size} lessons assigned</p>
-              </div>
-              <div className="p-4 space-y-4">
-                {courses.map(course => {
-                  const courseSections = tree.filter(s => s.course?.id === course.id && !s.parent_section_id);
-                  if (!courseSections.length) return null;
-                  return (
-                    <div key={course.id}>
-                      <div className="text-white font-medium text-sm mb-2">📘 {course.title}</div>
-                      {courseSections.map(section => (
-                        <div key={section.id} className="ml-4 mb-3">
-                          <div className="text-gray-400 text-xs mb-1.5">📁 {section.title}</div>
-                          {(section.lessons || []).map(lesson => {
-                            const assigned = assignedLessonIds.has(lesson.id);
-                            const busy = saving[lesson.id];
-                            return (
-                              <div key={lesson.id} className="ml-4 flex items-center justify-between py-1.5 border-b border-gray-800/50">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-300 text-sm">{lesson.title}</span>
-                                  {lesson.video_url && <span className="text-xs text-green-500">🎬</span>}
-                                </div>
-                                <button onClick={() => toggleAssignment(lesson.id, assigned)} disabled={busy}
-                                  className={`text-xs px-3 py-1 rounded-full transition ${
-                                    assigned
-                                      ? 'bg-green-900/50 text-green-400 hover:bg-red-900/50 hover:text-red-400'
-                                      : 'bg-gray-800 text-gray-400 hover:bg-green-900/50 hover:text-green-400'
-                                  } disabled:opacity-50`}>
-                                  {busy ? '...' : assigned ? '✓ Assigned' : '+ Assign'}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {!tree.length && <div className="text-center text-gray-500 py-8">No lessons available. Create courses and lessons first.</div>}
-              </div>
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {types.length === 0 && <div className="text-cortex-muted text-sm px-2 py-6 text-center">No active types</div>}
+          {types.map(t => (
+            <button key={t.id} onClick={() => setSelectedType(t)}
+              className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition ${
+                selectedType?.id === t.id ? 'bg-cortex-accent text-white' : 'text-cortex-text hover:bg-cortex-bg'
+              }`}>
+              <div className="font-medium">{t.name}</div>
+              {selectedType?.id === t.id && (
+                <div className="text-white/70 text-xs mt-0.5">{totalAssigned} assigned</div>
+              )}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* ── Right: lesson tree with toggles ──────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {!selectedType ? (
+          <div className="h-full flex items-center justify-center text-cortex-muted">
+            <div className="text-center">
+              <div className="text-4xl mb-2">🔗</div>
+              <div className="text-sm">Select a learner type to manage assignments</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Header bar */}
+            <div className="sticky top-0 bg-cortex-surface border-b border-cortex-border z-10 px-5 py-3 flex items-center justify-between gap-4">
+              <div>
+                <span className="font-semibold text-cortex-text">{selectedType.name}</span>
+                <span className="text-cortex-muted text-sm ml-2">— {totalAssigned}/{totalLessons} lessons assigned</span>
+              </div>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search lessons…"
+                className="w-52 bg-cortex-bg border border-cortex-border rounded-lg px-3 py-1.5 text-cortex-text text-sm focus:outline-none focus:border-cortex-accent" />
+            </div>
+
+            {loading ? (
+              <div className="p-12 text-center text-cortex-muted text-sm">Loading…</div>
+            ) : searchFiltered ? (
+              /* Search results flat list */
+              <div className="p-4 space-y-1">
+                {searchFiltered.length === 0 && (
+                  <div className="text-center text-cortex-muted text-sm py-8">No lessons match "{search}"</div>
+                )}
+                {searchFiltered.map(l => (
+                  <LessonToggleRow key={l.id} lesson={l} assigned={assignedIds.has(l.id)}
+                    saving={!!saving[l.id]} onToggle={() => toggle(l.id, assignedIds.has(l.id))}
+                    subtitle={`${l._course} › ${l._section}`} />
+                ))}
+              </div>
+            ) : (
+              /* Grouped by course / section */
+              <div>
+                {Object.values(byCourse).filter(g => g.sections.length > 0).map(({ course, sections }) => (
+                  <div key={course.id} className="border-b border-cortex-border last:border-0">
+                    {/* Course label */}
+                    <div className="px-5 py-3 bg-cortex-bg flex items-center gap-2">
+                      <span className="text-xs font-bold text-cortex-text uppercase tracking-wider">{course.title}</span>
+                    </div>
+
+                    {sections.map(section => {
+                      const lessons      = section.lessons || [];
+                      const assignedHere = lessons.filter(l => assignedIds.has(l.id)).length;
+                      const allAssigned  = lessons.length > 0 && assignedHere === lessons.length;
+                      const childSects   = tree.filter(s => s.parent_section_id === section.id);
+
+                      return (
+                        <div key={section.id}>
+                          {/* Section row */}
+                          <div className="flex items-center gap-3 px-5 py-2.5 border-t border-cortex-border bg-cortex-surface/50">
+                            <div className="flex-1 text-sm font-medium text-cortex-text">{section.title}</div>
+                            <span className="text-xs text-cortex-muted">{assignedHere}/{lessons.length}</span>
+                            {lessons.length > 1 && (
+                              <button onClick={() => toggleSection(lessons, !allAssigned)}
+                                className={`text-xs px-2.5 py-1 rounded-lg transition font-medium ${
+                                  allAssigned
+                                    ? 'bg-cortex-accent/10 text-cortex-accent hover:bg-cortex-accent/20'
+                                    : 'bg-cortex-bg border border-cortex-border text-cortex-muted hover:text-cortex-text'
+                                }`}>
+                                {allAssigned ? 'Unassign all' : 'Assign all'}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Lessons */}
+                          {lessons.map(lesson => (
+                            <LessonToggleRow key={lesson.id} lesson={lesson}
+                              assigned={assignedIds.has(lesson.id)} saving={!!saving[lesson.id]}
+                              onToggle={() => toggle(lesson.id, assignedIds.has(lesson.id))} />
+                          ))}
+
+                          {lessons.length === 0 && (
+                            <div className="px-10 py-2 text-xs text-cortex-muted italic border-t border-cortex-border">
+                              No lessons in this section
+                            </div>
+                          )}
+
+                          {/* Child sections */}
+                          {childSects.map(child => (
+                            <div key={child.id} className="ml-6 border-l-2 border-cortex-border">
+                              <div className="flex items-center gap-3 px-4 py-2 border-t border-cortex-border">
+                                <div className="flex-1 text-xs font-medium text-cortex-muted">{child.title}</div>
+                              </div>
+                              {(child.lessons || []).map(lesson => (
+                                <LessonToggleRow key={lesson.id} lesson={lesson}
+                                  assigned={assignedIds.has(lesson.id)} saving={!!saving[lesson.id]}
+                                  onToggle={() => toggle(lesson.id, assignedIds.has(lesson.id))} />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {Object.values(byCourse).every(g => g.sections.length === 0) && (
+                  <div className="p-12 text-center text-cortex-muted text-sm">
+                    No courses with sections yet. Add content first.
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LessonToggleRow({ lesson, assigned, saving, onToggle, subtitle }) {
+  return (
+    <div className="flex items-center gap-4 px-6 py-2.5 border-t border-cortex-border hover:bg-cortex-bg transition group">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-cortex-text truncate">{lesson.title}</div>
+        {subtitle && <div className="text-xs text-cortex-muted mt-0.5 truncate">{subtitle}</div>}
+        {!subtitle && lesson.video_url && <div className="text-xs text-green-600 dark:text-green-400 mt-0.5">● video</div>}
+      </div>
+
+      <button onClick={onToggle} disabled={saving}
+        className={`flex-shrink-0 flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg font-medium transition disabled:opacity-50 ${
+          assigned
+            ? 'bg-cortex-accent text-white hover:bg-cortex-accent/80'
+            : 'bg-cortex-bg border border-cortex-border text-cortex-muted hover:text-cortex-text hover:border-cortex-accent'
+        }`}>
+        {saving
+          ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+          : assigned ? '✓ Assigned' : '+ Assign'
+        }
+      </button>
     </div>
   );
 }

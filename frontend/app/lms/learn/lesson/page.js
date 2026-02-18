@@ -198,7 +198,7 @@ export default function LessonPage() {
   if (!lesson) return <div className="p-8 text-red-400">Lesson not found or access denied.</div>;
 
   const completed = progress?.completed || maxWatchedPctRef.current >= COMPLETION_THRESHOLD;
-  const videoUrl = lesson.video_url ? `${API}${lesson.video_url}` : null;
+  const videoUrl = lesson.video_url || null;
 
   return (
     <div className="flex flex-col h-screen bg-gray-950">

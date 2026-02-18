@@ -1,25 +1,28 @@
-import './globals.css'
-import { Inter } from 'next/font/google'
-import { Providers } from './providers'
+import './globals.css';
+import { Inter } from 'next/font/google';
+import { Providers } from './providers';
 import { AuthProvider } from '@/lib/auth';
+import { ThemeProvider } from '@/lib/theme';
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'Cortex 2.0 | Support Center Automation',
-  description: 'Real-time monitoring and intelligence for MedGulf support operations',
-}
+  title: 'Cortex LMS',
+  description: 'Training & Learning Management System',
+};
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </Providers>
+        <ThemeProvider>
+          <Providers>
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+          </Providers>
+        </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }
