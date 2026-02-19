@@ -98,6 +98,7 @@ function redirectByRole(role, router) {
     case 'training': router.push('/lms/admin'); break;
     case 'learner':  router.push('/lms/learn'); break;
     case 'support':  router.push('/dashboard'); break;
+    case 'trainer': router.push('/lms/trainer'); break;
     default:         router.push('/dashboard');
   }
 }
