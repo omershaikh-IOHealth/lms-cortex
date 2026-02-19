@@ -19,17 +19,17 @@ export default function LearnPage() {
 
   useEffect(() => {
     apiFetch('/api/lms/me/curriculum').then(r => r?.json()).then(d => {
-      if (d) {
-        setCurriculum(d);
-        // Expand all courses by default
-        const exp = {};
-        (d.courses || []).forEach(c => { exp[c.id] = true; });
-        setExpandedCourses(exp);
-      }
-    }).finally(() => setLoading(false));
+      console.log('curriculum API response:', d); // remove after debugging
+      const safe = d && d.courses ? d : { courses: [] };
+      setCurriculum(safe);
+      const exp = {};
+      (safe.courses || []).forEach(c => { exp[c.id] = true; });
+      setExpandedCourses(exp);
+    }).catch(e => console.error('curriculum error:', e))
+    .finally(() => setLoading(false));
   }, []);
 
-  const allLessons     = curriculum.courses.flatMap(c => c.sections.flatMap(s => s.lessons));
+  const allLessons     = (curriculum.courses || []).flatMap(c => (c.sections || []).flatMap(s => s.lessons || []));
   const completedCount = allLessons.filter(l => l.completed).length;
   const inProgressCount = allLessons.filter(l => !l.completed && l.percent_watched > 0).length;
   const pct            = allLessons.length > 0 ? Math.round(completedCount / allLessons.length * 100) : 0;
@@ -76,7 +76,7 @@ export default function LearnPage() {
       )}
 
       {/* Curriculum tree */}
-      {!curriculum.courses.length ? (
+      {!(curriculum.courses || []).length ? (
         <div className="bg-cortex-surface border border-cortex-border rounded-xl p-12 text-center text-cortex-muted">
           <div className="text-4xl mb-3">🎓</div>
           <div className="text-sm">No training assigned yet. Contact your training team.</div>
@@ -84,7 +84,7 @@ export default function LearnPage() {
       ) : (
         <div className="space-y-4">
           {curriculum.courses.map(course => {
-            const courseLessons  = course.sections.flatMap(s => s.lessons);
+            const courseLessons  = (course.sections || []).flatMap(s => s.lessons || []);
             const courseDone     = courseLessons.filter(l => l.completed).length;
             const courseExpanded = expandedCourses[course.id];
 

@@ -4,10 +4,16 @@ import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+let _supabase = null;
+const getSupabase = () => {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+  }
+  return _supabase;
+};
 const BUCKET = process.env.SUPABASE_VIDEO_BUCKET || 'lms-videos';
 
 // Use memory storage — no local disk
@@ -26,17 +32,17 @@ const deleteVideoFile = async (video_url) => {
   if (video_url.startsWith('/uploads/')) return; // old local file, skip
   try {
     const filename = video_url.split('/').pop();
-    await supabase.storage.from(BUCKET).remove([filename]);
+    await getSupabase().storage.from(BUCKET).remove([filename]);
   } catch {}
 };
 
 const uploadToSupabase = async (file) => {
   const filename = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(filename, file.buffer, { contentType: file.mimetype, upsert: false });
-  if (error) throw new Error(error.message);
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+  const { error } = await getSupabase().storage
+  .from(BUCKET)
+  .upload(filename, file.buffer, { contentType: file.mimetype, upsert: false });
+if (error) throw new Error(error.message);
+const { data } = getSupabase().storage.from(BUCKET).getPublicUrl(filename);
   return data.publicUrl;
 };
 

@@ -19,6 +19,7 @@ import usersRoutes       from './lms/routes/users.js';
 import trainerRoutes     from './lms/routes/trainer.js';
 
 dotenv.config();
+console.log('ENV CHECK:', process.env.DB_USER, process.env.DB_HOST);
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -29,18 +30,15 @@ app.use(cookieParser());
 
 // Serve uploaded videos — must be before route handlers
 const __lms_dir = dirname(fileURLToPath(import.meta.url));
-app.use('/uploads/videos', express.static(`${__lms_dir}/uploads/videos`, {
-  dotfiles: 'deny',
-  setHeaders: (res) => {
-    // Range requests enable scrubbing/seeking from any device on the LAN
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-}));
+
 
 // NEW — replace with:
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  host:     process.env.DB_HOST,
+  port:     parseInt(process.env.DB_PORT || '6543'),
+  database: process.env.DB_NAME || 'postgres',
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
   max: 20,
   idleTimeoutMillis:    30000,
   connectionTimeoutMillis: 30000,
@@ -77,6 +75,11 @@ app.use('/api/lms/content',       contentRoutes(pool));
 app.use('/api/lms/me',    learnerApiRoutes(pool));
 // Keep /api/lms/learn/* as alias
 app.use('/api/lms/learn', learnerApiRoutes(pool));
+
+app.use('/api/departments',      departmentsRoutes(pool));
+app.use('/api/lms/admin/users',  usersRoutes(pool));
+app.use('/api/trainer',          trainerRoutes(pool));
+
 
 app.listen(PORT, '0.0.0.0', () =>
   console.log(`🚀 LMS server running on port ${PORT} (accessible on LAN)`)

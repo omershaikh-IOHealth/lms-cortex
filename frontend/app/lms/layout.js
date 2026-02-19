@@ -23,6 +23,10 @@ const LEARNER_NAV = [
   { href: '/lms/learn/schedule',  label: 'My Schedule', icon: 'calendar' },
 ];
 
+const TRAINER_NAV = [
+  { href: '/lms/trainer', label: 'My Sessions', icon: 'calendar' },
+];
+
 // Minimal SVG icons — avoids external dependencies
 const Icon = ({ name, size = 16 }) => {
   const icons = {
@@ -55,9 +59,10 @@ export default function LMSLayout({ children }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!loading && !user)              router.push('/login');
+    if (!loading && !user)                    router.push('/login');
     if (!loading && user?.role === 'support') router.push('/dashboard');
-  }, [user, loading, router]);
+    if (!loading && user?.role === 'trainer' && pathname === '/lms') router.push('/lms/trainer');
+  }, [user, loading, router, pathname]);
 
   if (loading || !user) return (
     <div className="min-h-screen flex items-center justify-center bg-cortex-bg text-cortex-muted">
@@ -68,8 +73,9 @@ export default function LMSLayout({ children }) {
     </div>
   );
 
-  const isAdmin = user.role === 'admin' || user.role === 'training';
-  const nav     = isAdmin ? ADMIN_NAV : LEARNER_NAV;
+  const isAdmin   = user.role === 'admin' || user.role === 'training';
+  const isTrainer = user.role === 'trainer';
+  const nav       = isAdmin ? ADMIN_NAV : isTrainer ? TRAINER_NAV : LEARNER_NAV;
 
   const cycleTheme = () => {
     if (theme === 'system') setTheme('light');
