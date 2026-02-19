@@ -1,22 +1,18 @@
 // backend/lms/routes/content.js
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { createClient } from '@supabase/supabase-js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
-const __dir    = dirname(fileURLToPath(import.meta.url));
-const uploadDir = path.join(__dir, '../../uploads/videos');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+const BUCKET = process.env.SUPABASE_VIDEO_BUCKET || 'lms-videos';
 
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
-  filename:    (_, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`),
-});
+// Use memory storage — no local disk
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (_, file, cb) => {
     const ok = ['video/mp4', 'video/webm', 'video/ogg'].includes(file.mimetype);
@@ -24,10 +20,24 @@ const upload = multer({
   },
 });
 
-const deleteVideoFile = (video_url) => {
+const deleteVideoFile = async (video_url) => {
   if (!video_url) return;
-  const filePath = path.join(__dir, '../../', video_url);
-  fs.unlink(filePath, () => {});  // silent — file may not exist
+  // Handle both old local paths and new Supabase URLs
+  if (video_url.startsWith('/uploads/')) return; // old local file, skip
+  try {
+    const filename = video_url.split('/').pop();
+    await supabase.storage.from(BUCKET).remove([filename]);
+  } catch {}
+};
+
+const uploadToSupabase = async (file) => {
+  const filename = `${Date.now()}-${file.originalname.replace(/\s+/g, '_')}`;
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(filename, file.buffer, { contentType: file.mimetype, upsert: false });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+  return data.publicUrl;
 };
 
 export default function contentRoutes(pool) {
@@ -163,7 +173,13 @@ export default function contentRoutes(pool) {
   router.post('/lessons', ...guard, upload.single('video'), async (req, res) => {
     const { section_id, title, manual_markdown, sort_order, duration_seconds } = req.body;
     if (!section_id || !title?.trim()) return res.status(400).json({ error: 'section_id and title required' });
-    const video_url = req.file ? `/uploads/videos/${req.file.filename}` : null;
+    let video_url = null;
+      if (req.file) {
+        const { url, storagePath } = await uploadToSupabase(req.file);
+        video_url = url;        // public HTTPS URL for playback
+        // store storagePath in a separate col OR just store the url and delete by listing — simplest:
+        video_url = url;
+      }
     try {
       const r = await pool.query(`
         INSERT INTO lms_lessons (section_id, title, video_url, manual_markdown, sort_order, duration_seconds, created_by, updated_by)
@@ -179,11 +195,11 @@ export default function contentRoutes(pool) {
     const params = [title?.trim(), manual_markdown, sort_order, is_active, duration_seconds, req.user.id, req.params.id];
 
     if (req.file) {
-      // Delete old video file first
       const old = await pool.query('SELECT video_url FROM lms_lessons WHERE id = $1', [req.params.id]);
-      deleteVideoFile(old.rows[0]?.video_url);
+      await deleteVideoFile(old.rows[0]?.video_url);
+      const newUrl = await uploadToSupabase(req.file);
       videoClause = `, video_url = $8`;
-      params.push(`/uploads/videos/${req.file.filename}`);
+      params.push(newUrl);
     }
 
     try {

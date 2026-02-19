@@ -14,6 +14,10 @@ import adminApiRoutes        from './lms/routes/adminApi.js';
 import learnerApiRoutes      from './lms/routes/learnerApi.js';
 import physicalTrainingRoutes from './lms/routes/physicalTraining.js';
 
+import departmentsRoutes from './lms/routes/departments.js';
+import usersRoutes       from './lms/routes/users.js';
+import trainerRoutes     from './lms/routes/trainer.js';
+
 dotenv.config();
 
 const app = express();
@@ -34,19 +38,15 @@ app.use('/uploads/videos', express.static(`${__lms_dir}/uploads/videos`, {
   }
 }));
 
+// NEW — replace with:
 const pool = new pg.Pool({
-  host:     process.env.DB_HOST,
-  port:     process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME,
-  user:     process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  connectionString: process.env.DATABASE_URL,
   max: 20,
   idleTimeoutMillis:    30000,
   connectionTimeoutMillis: 30000,
   ssl: { rejectUnauthorized: false },
   options: '--search_path=test'
 });
-
 pool.query('SELECT NOW()', (err, res) => {
   if (err) console.error('❌ DB connection failed:', err.message);
   else     console.log('✅ LMS DB connected:', res.rows[0].now);
