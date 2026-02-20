@@ -1,7 +1,7 @@
 // frontend/app/lms/admin/content/page.js
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { apiFetch, apiUpload } from '@/lib/auth';
+import { apiFetch } from '@/lib/auth';
 
 // ─── tiny icons ────────────────────────────────────────────────────────────
 const Ic = ({ d, size = 14 }) => (
@@ -103,16 +103,37 @@ export default function ContentPage() {
     e.preventDefault(); setError(''); setSaving(true);
     try {
       const isEdit = panel?.type === 'edit_lesson';
-      const fd     = new FormData();
-      fd.append('title',           form.title || '');
-      fd.append('section_id',      form.section_id || '');
-      fd.append('manual_markdown', form.manual_markdown || '');
-      fd.append('sort_order',      form.sort_order || 0);
-      fd.append('is_active',       form.is_active ? 'true' : 'false');
-      if (videoFile) fd.append('video', videoFile);
+
+      // Upload video directly to Supabase via presigned URL (avoids serverless size limits)
+      let video_url = form.video_url ?? undefined;
+      if (videoFile) {
+        const urlRes = await apiFetch('/api/lms/admin/content/upload-url', {
+          method: 'POST',
+          body: JSON.stringify({ filename: videoFile.name, contentType: videoFile.type }),
+        });
+        const urlData = await urlRes.json();
+        if (!urlRes.ok) throw new Error(urlData.error || 'Failed to get upload URL');
+
+        const uploadRes = await fetch(urlData.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': videoFile.type },
+          body: videoFile,
+        });
+        if (!uploadRes.ok) throw new Error('Video upload to storage failed');
+        video_url = urlData.publicUrl;
+      }
+
+      const body = {
+        title:           form.title,
+        section_id:      form.section_id,
+        manual_markdown: form.manual_markdown || '',
+        sort_order:      form.sort_order || 0,
+        is_active:       form.is_active,
+        ...(video_url !== undefined ? { video_url } : {}),
+      };
 
       const url = isEdit ? `/api/lms/admin/content/lessons/${panel.data.id}` : '/api/lms/admin/content/lessons';
-      const r   = await apiUpload(url, fd);
+      const r   = await apiFetch(url, { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(body) });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       await loadTree(selectedCourse.id);

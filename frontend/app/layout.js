@@ -1,10 +1,7 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
 import { Providers } from './providers';
 import { AuthProvider } from '@/lib/auth';
 import { ThemeProvider } from '@/lib/theme';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
   title: 'Cortex LMS',
@@ -14,7 +11,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body>
         <ThemeProvider>
           <Providers>
             <AuthProvider>
