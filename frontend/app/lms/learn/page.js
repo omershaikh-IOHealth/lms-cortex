@@ -2,8 +2,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '@/lib/auth';
-import { useAuth } from '@/lib/auth';
+import { apiFetch, useAuth } from '@/lib/auth';
 
 const fmtDuration = (s) => {
   if (!s) return '';
@@ -18,21 +17,23 @@ export default function LearnPage() {
   const [expandedCourses, setExpandedCourses] = useState({});
 
   useEffect(() => {
-    apiFetch('/api/lms/me/curriculum').then(r => r?.json()).then(d => {
-      console.log('curriculum API response:', d); // remove after debugging
-      const safe = d && d.courses ? d : { courses: [] };
-      setCurriculum(safe);
-      const exp = {};
-      (safe.courses || []).forEach(c => { exp[c.id] = true; });
-      setExpandedCourses(exp);
-    }).catch(e => console.error('curriculum error:', e))
-    .finally(() => setLoading(false));
+    apiFetch('/api/lms/me/curriculum')
+      .then(r => r?.json())
+      .then(d => {
+        const safe = (d && Array.isArray(d.courses)) ? d : { courses: [] };
+        setCurriculum(safe);
+        const exp = {};
+        safe.courses.forEach(c => { exp[c.id] = true; });
+        setExpandedCourses(exp);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const allLessons     = (curriculum.courses || []).flatMap(c => (c.sections || []).flatMap(s => s.lessons || []));
-  const completedCount = allLessons.filter(l => l.completed).length;
+  const allLessons      = (curriculum.courses || []).flatMap(c => (c.sections || []).flatMap(s => s.lessons || []));
+  const completedCount  = allLessons.filter(l => l.completed).length;
   const inProgressCount = allLessons.filter(l => !l.completed && l.percent_watched > 0).length;
-  const pct            = allLessons.length > 0 ? Math.round(completedCount / allLessons.length * 100) : 0;
+  const pct             = allLessons.length > 0 ? Math.round(completedCount / allLessons.length * 100) : 0;
 
   if (loading) return (
     <div className="p-8 text-cortex-muted flex items-center gap-2">
@@ -51,9 +52,9 @@ export default function LearnPage() {
       {/* Progress summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: 'Total Lessons',  value: allLessons.length,  color: 'text-cortex-text' },
-          { label: 'Completed',      value: completedCount,     color: 'text-green-600' },
-          { label: 'In Progress',    value: inProgressCount,    color: 'text-cortex-accent' },
+          { label: 'Total Lessons', value: allLessons.length, color: 'text-cortex-text' },
+          { label: 'Completed',     value: completedCount,    color: 'text-green-600' },
+          { label: 'In Progress',   value: inProgressCount,   color: 'text-cortex-accent' },
         ].map(m => (
           <div key={m.label} className="bg-cortex-surface border border-cortex-border rounded-xl p-4 text-center">
             <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
@@ -105,16 +106,20 @@ export default function LearnPage() {
                   </svg>
                 </button>
 
-                {courseExpanded && course.sections.map(section => (
+                {courseExpanded && (course.sections || []).map(section => (
                   <div key={section.id} className="border-t border-cortex-border">
                     <div className="px-5 py-2.5 bg-cortex-bg text-xs font-semibold text-cortex-muted uppercase tracking-wider">
                       {section.title}
                     </div>
-                    {section.lessons.map(lesson => (
+                    {(section.lessons || []).map(lesson => (
                       <Link key={lesson.id} href={`/lms/learn/lesson?id=${lesson.id}`}
                         className="flex items-center gap-3 px-5 py-3 border-t border-cortex-border hover:bg-cortex-bg transition group">
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                          lesson.completed ? 'border-green-500 bg-green-500' : lesson.percent_watched > 0 ? 'border-cortex-accent' : 'border-cortex-border'
+                          lesson.completed
+                            ? 'border-green-500 bg-green-500'
+                            : lesson.percent_watched > 0
+                            ? 'border-cortex-accent'
+                            : 'border-cortex-border'
                         }`}>
                           {lesson.completed && (
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
