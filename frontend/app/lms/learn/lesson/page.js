@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/auth';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 const HEARTBEAT_INTERVAL = 5000; // 5s
 const IDLE_TIMEOUT = 60000; // 60s
 const COMPLETION_THRESHOLD = 80;
