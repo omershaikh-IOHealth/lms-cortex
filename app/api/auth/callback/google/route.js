@@ -12,14 +12,14 @@ const ROLE_DESTINATIONS = {
 };
 
 export async function GET(request) {
-  const baseUrl = process.env.APP_URL || 'http://localhost:3000';
-  const redirectUri = `${baseUrl}/api/auth/callback/google`;
+  const origin = new URL(request.url).origin;
+  const redirectUri = `${origin}/api/auth/callback/google`;
   const { searchParams } = new URL(request.url);
   const code  = searchParams.get('code');
   const error = searchParams.get('error');
 
   if (error || !code) {
-    return NextResponse.redirect(`${baseUrl}/login?error=google_cancelled`);
+    return NextResponse.redirect(`${origin}/login?error=google_cancelled`);
   }
 
   try {
@@ -38,7 +38,7 @@ export async function GET(request) {
     const tokens = await tokenRes.json();
     if (!tokenRes.ok) {
       console.error('Google token exchange failed:', tokens);
-      return NextResponse.redirect(`${baseUrl}/login?error=google_token`);
+      return NextResponse.redirect(`${origin}/login?error=google_token`);
     }
 
     // 2. Fetch Google user info
@@ -50,7 +50,7 @@ export async function GET(request) {
     const name  = googleUser.name || googleUser.email;
 
     if (!email) {
-      return NextResponse.redirect(`${baseUrl}/login?error=google_no_email`);
+      return NextResponse.redirect(`${origin}/login?error=google_no_email`);
     }
 
     const pool = getPool();
@@ -63,10 +63,10 @@ export async function GET(request) {
     // 3a. Existing user — check status
     if (existing) {
       if (existing.registration_status === 'pending') {
-        return NextResponse.redirect(`${baseUrl}/login?google=pending`);
+        return NextResponse.redirect(`${origin}/login?google=pending`);
       }
       if (existing.registration_status === 'rejected' || !existing.is_active) {
-        return NextResponse.redirect(`${baseUrl}/login?error=google_rejected`);
+        return NextResponse.redirect(`${origin}/login?error=google_rejected`);
       }
 
       // Active — issue JWT and redirect
@@ -77,7 +77,7 @@ export async function GET(request) {
         name:  existing.display_name,
       });
       const destination = ROLE_DESTINATIONS[existing.role] || '/dashboard';
-      const response = NextResponse.redirect(`${baseUrl}${destination}`);
+      const response = NextResponse.redirect(`${origin}${destination}`);
       setAuthCookie(response, token);
       return response;
     }
@@ -107,20 +107,20 @@ export async function GET(request) {
       }
 
       await client.query('COMMIT');
-      return NextResponse.redirect(`${baseUrl}/login?google=pending`);
+      return NextResponse.redirect(`${origin}/login?google=pending`);
     } catch (err) {
       await client.query('ROLLBACK');
       if (err.code === '23505') {
         // Race condition — email was just registered; redirect to pending
-        return NextResponse.redirect(`${baseUrl}/login?google=pending`);
+        return NextResponse.redirect(`${origin}/login?google=pending`);
       }
       console.error('Google register error:', err);
-      return NextResponse.redirect(`${baseUrl}/login?error=google_error`);
+      return NextResponse.redirect(`${origin}/login?error=google_error`);
     } finally {
       client.release();
     }
   } catch (err) {
     console.error('Google OAuth callback error:', err);
-    return NextResponse.redirect(`${baseUrl}/login?error=google_error`);
+    return NextResponse.redirect(`${origin}/login?error=google_error`);
   }
 }
