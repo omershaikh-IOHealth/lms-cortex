@@ -1,12 +1,15 @@
 // frontend/components/NotificationBell.js
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/auth';
 
 const TYPE_ICON = {
   physical_training_scheduled: '📅',
   training_reminder:           '⏰',
   lesson_assigned:             '📚',
+  new_content:                 '📚',
+  new_user_request:            '👤',
 };
 
 export default function NotificationBell() {
@@ -14,6 +17,7 @@ export default function NotificationBell() {
   const [data, setData]    = useState({ notifications: [], unread: 0 });
   const dropdownRef        = useRef(null);
   const pollRef            = useRef(null);
+  const router             = useRouter();
 
   const fetchNotifs = useCallback(async () => {
     const r = await apiFetch('/api/lms/me/notifications');
@@ -92,7 +96,11 @@ export default function NotificationBell() {
                 <div
                   key={n.id}
                   className={`px-4 py-3 border-b border-cortex-border last:border-0 flex gap-3 cursor-pointer hover:bg-cortex-bg transition ${!n.is_read ? 'bg-cortex-accent/5' : ''}`}
-                  onClick={() => !n.is_read && markOne(n.id)}
+                  onClick={async () => {
+                    if (!n.is_read) await markOne(n.id);
+                    if (n.link) { setOpen(false); router.push(n.link); }
+                    else if (n.type === 'new_content' && n.reference_id) { setOpen(false); router.push(`/lms/learn/lesson?id=${n.reference_id}`); }
+                  }}
                 >
                   <span className="text-xl flex-shrink-0 mt-0.5">
                     {TYPE_ICON[n.type] || '🔔'}

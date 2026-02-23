@@ -123,7 +123,12 @@ export default function LearnPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-cortex-text group-hover:text-cortex-accent transition truncate">{lesson.title}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm text-cortex-text group-hover:text-cortex-accent transition truncate">{lesson.title}</div>
+                            {lesson.is_new && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cortex-accent text-white flex-shrink-0 leading-none">NEW</span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             {lesson.duration_seconds && <span className="text-xs text-cortex-muted">{fmtDuration(lesson.duration_seconds)}</span>}
                             {lesson.percent_watched > 0 && !lesson.completed && (

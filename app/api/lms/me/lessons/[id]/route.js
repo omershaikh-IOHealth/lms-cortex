@@ -29,6 +29,23 @@ export async function GET(request, { params }) {
       'SELECT * FROM lms_user_lesson_progress WHERE user_id=$1 AND lesson_id=$2',
       [user.id, params.id]
     );
+
+    // Set first_viewed_at on first visit (clears NEW badge)
+    if (progressRes.rows[0]) {
+      if (!progressRes.rows[0].first_viewed_at) {
+        await pool.query(
+          'UPDATE lms_user_lesson_progress SET first_viewed_at = NOW() WHERE user_id=$1 AND lesson_id=$2',
+          [user.id, params.id]
+        );
+      }
+    } else {
+      // Create a progress row with first_viewed_at set
+      await pool.query(
+        'INSERT INTO lms_user_lesson_progress (user_id, lesson_id, first_viewed_at) VALUES ($1,$2,NOW()) ON CONFLICT DO NOTHING',
+        [user.id, params.id]
+      );
+    }
+
     return NextResponse.json({ lesson, progress: progressRes.rows[0] || null });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

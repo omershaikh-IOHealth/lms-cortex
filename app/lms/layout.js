@@ -9,6 +9,7 @@ import NotificationBell from "@/components/NotificationBell";
 
 const ADMIN_NAV = [
   { href: "/lms/admin", label: "Overview", icon: "grid" },
+  { href: "/lms/admin/users", label: "Users", icon: "user-cog" },
   { href: "/lms/admin/learner-types", label: "Learner Types", icon: "tag" },
   { href: "/lms/admin/learners", label: "Learners", icon: "users" },
   { href: "/lms/admin/content", label: "Content", icon: "book" },
@@ -29,6 +30,7 @@ const LEARNER_NAV = [
 
 const TRAINER_NAV = [
   { href: "/lms/trainer", label: "My Sessions", icon: "calendar" },
+  { href: "/lms/trainer/messages", label: "Messages", icon: "message-circle" },
 ];
 
 // Minimal SVG icons — avoids external dependencies
@@ -124,6 +126,19 @@ const Icon = ({ name, size = 16 }) => {
       <>
         <line x1="19" y1="12" x2="5" y2="12" />
         <polyline points="12 19 5 12 12 5" />
+      </>
+    ),
+    "user-cog": (
+      <>
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+        <circle cx="19" cy="11" r="2" />
+        <path d="M19 9v.01M19 13v.01" />
+      </>
+    ),
+    "message-circle": (
+      <>
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </>
     ),
   };
@@ -263,8 +278,8 @@ export default function LMSLayout({ children }) {
             {nav.find((n) => pathname.startsWith(n.href))?.label || "LMS"}
           </div>
           <div className="flex items-center gap-2">
-            {/* Only show bell for learners (admins manage, learners receive) */}
-            {user.role === "learner" && <NotificationBell />}
+            {/* Show bell for learners and trainers */}
+            {(user.role === "learner" || user.role === "trainer") && <NotificationBell />}
             <div className="h-7 w-7 rounded-full bg-cortex-accent/20 text-cortex-accent flex items-center justify-center text-xs font-bold">
               {(user.display_name || user.email)[0].toUpperCase()}
             </div>

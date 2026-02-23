@@ -1,7 +1,8 @@
 // frontend/app/lms/admin/physical-training/page.js
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 
 const STATUS_STYLES = {
   scheduled:  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -17,18 +18,27 @@ const ATTEND_STYLES = {
 };
 
 const fmt = (d) => d ? new Date(d).toLocaleDateString('en-AE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const isPast = (s) => new Date(s.scheduled_date) < new Date(new Date().toDateString());
+
+const ackStatus = (e) => {
+  if (!e.acknowledged_at) return 'pending';
+  if (e.last_session_updated_at && new Date(e.acknowledged_at) < new Date(e.last_session_updated_at)) return 'needs-reack';
+  return 'acked';
+};
 
 const EMPTY_FORM = { title: '', description: '', location: '', trainer_id: '', scheduled_date: '', start_time: '', end_time: '', max_capacity: '' };
 
 export default function PhysicalTrainingPage() {
+  const { user } = useAuth();
   const [sessions, setSessions]         = useState([]);
   const [trainers, setTrainers]         = useState([]);
   const [learnerTypes, setLearnerTypes] = useState([]);
   const [allLearners, setAllLearners]   = useState([]);
   const [selected, setSelected]         = useState(null);
   const [enrollments, setEnrollments]   = useState([]);
+  const [activeTab, setActiveTab]       = useState('attendance'); // 'attendance' | 'chat'
 
-  const [modal, setModal]             = useState(null); // 'create'|'edit'|'enroll'|'reset'|'delete_confirm'
+  const [modal, setModal]             = useState(null);
   const [form, setForm]               = useState(EMPTY_FORM);
   const [resetForm, setResetForm]     = useState({ scheduled_date: '', start_time: '', end_time: '' });
   const [enrollMode, setEnrollMode]   = useState('type');
@@ -38,13 +48,20 @@ export default function PhysicalTrainingPage() {
   const [error, setError]             = useState('');
   const [attendSaving, setAttendSaving] = useState({});
 
-  // ── data fetchers ─────────────────────────────────────────────────────────
+  // Chat state
+  const [messages, setMessages]     = useState([]);
+  const [chatInput, setChatInput]   = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const chatBottomRef = useRef(null);
+  const chatPollRef   = useRef(null);
+
+  // ── data fetchers ──────────────────────────────────────────────────────────
 
   const loadSessions = useCallback(async () => {
     const d = await apiFetch('/api/lms/admin/physical-sessions').then(r => r?.json());
     if (d) {
       setSessions(d);
-      // Keep selected in sync
       setSelected(prev => prev ? (d.find(s => s.id === prev.id) || prev) : null);
     }
   }, []);
@@ -52,6 +69,14 @@ export default function PhysicalTrainingPage() {
   const loadEnrollments = useCallback(async (id) => {
     const d = await apiFetch(`/api/lms/admin/physical-sessions/${id}/enrollments`).then(r => r?.json());
     if (d) setEnrollments(d);
+  }, []);
+
+  const loadMessages = useCallback(async (id) => {
+    const d = await apiFetch(`/api/lms/sessions/${id}/messages`).then(r => r?.json());
+    if (Array.isArray(d)) {
+      setMessages(d);
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    }
   }, []);
 
   useEffect(() => {
@@ -62,8 +87,24 @@ export default function PhysicalTrainingPage() {
   }, []);
 
   useEffect(() => {
-    if (selected) loadEnrollments(selected.id);
+    if (selected) {
+      loadEnrollments(selected.id);
+      setActiveTab('attendance');
+      setMessages([]);
+      clearInterval(chatPollRef.current);
+    }
   }, [selected?.id]);
+
+  // Poll chat when chat tab is active
+  useEffect(() => {
+    clearInterval(chatPollRef.current);
+    if (activeTab === 'chat' && selected) {
+      setChatLoading(true);
+      loadMessages(selected.id).finally(() => setChatLoading(false));
+      chatPollRef.current = setInterval(() => loadMessages(selected.id), 10_000);
+    }
+    return () => clearInterval(chatPollRef.current);
+  }, [activeTab, selected?.id]);
 
   // ── session CRUD ──────────────────────────────────────────────────────────
 
@@ -104,10 +145,7 @@ export default function PhysicalTrainingPage() {
     if (!selected) return;
     setSaving(true);
     await apiFetch(`/api/lms/admin/physical-sessions/${selected.id}`, { method: 'DELETE' });
-    setSelected(null);
-    setEnrollments([]);
-    setModal(null);
-    setSaving(false);
+    setSelected(null); setEnrollments([]); setModal(null); setSaving(false);
     await loadSessions();
   };
 
@@ -124,14 +162,12 @@ export default function PhysicalTrainingPage() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
-      setModal(null);
-      await loadSessions();
-      await loadEnrollments(selected.id);
+      setModal(null); await loadSessions(); await loadEnrollments(selected.id);
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
   };
 
-  // ── enrollment ───────────────────────────────────────────────────────────
+  // ── enrollment ────────────────────────────────────────────────────────────
 
   const doEnroll = async () => {
     setError(''); setSaving(true);
@@ -173,14 +209,28 @@ export default function PhysicalTrainingPage() {
     await Promise.all([loadEnrollments(selected.id), loadSessions()]);
   };
 
+  // ── chat ──────────────────────────────────────────────────────────────────
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatSending || !selected) return;
+    setChatSending(true);
+    await apiFetch(`/api/lms/sessions/${selected.id}/messages`, {
+      method: 'POST', body: JSON.stringify({ message: chatInput.trim() })
+    });
+    setChatInput('');
+    await loadMessages(selected.id);
+    setChatSending(false);
+  };
+
   // ── render ────────────────────────────────────────────────────────────────
 
   const isCancelled = selected?.status === 'cancelled';
+  const isPastSelected = selected ? isPast(selected) : false;
 
   return (
     <div className="flex h-full">
 
-      {/* ── Session list sidebar ─────────────────────────────────────────────── */}
+      {/* ── Session list sidebar ── */}
       <div className="w-80 flex-shrink-0 border-r border-cortex-border bg-cortex-surface flex flex-col">
         <div className="p-4 border-b border-cortex-border flex items-center justify-between">
           <h1 className="font-semibold text-cortex-text text-sm">Physical Training</h1>
@@ -193,35 +243,41 @@ export default function PhysicalTrainingPage() {
           {sessions.length === 0 && (
             <div className="text-cortex-muted text-sm text-center py-12">No sessions yet</div>
           )}
-          {sessions.map(s => (
-            <button key={s.id} onClick={() => setSelected(s)}
-              className={`w-full text-left p-3 rounded-xl border transition ${
-                selected?.id === s.id
-                  ? 'border-cortex-accent bg-cortex-accent/5'
-                  : 'border-cortex-border bg-cortex-bg hover:border-cortex-muted/50'
-              }`}>
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <span className="text-cortex-text text-sm font-medium leading-tight line-clamp-2">{s.title}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_STYLES[s.status]}`}>
-                  {s.status}
-                </span>
-              </div>
-              <div className="text-cortex-muted text-xs">{fmt(s.scheduled_date)}</div>
-              <div className="text-cortex-muted text-xs">{s.start_time} – {s.end_time}</div>
-              {s.location && <div className="text-cortex-muted text-xs truncate">📍 {s.location}</div>}
-              <div className="flex gap-3 mt-2 text-xs text-cortex-muted">
-                <span>👥 {s.enrolled_count}</span>
-                {(s.present_count > 0 || s.absent_count > 0) && <>
-                  <span className="text-green-600">✓ {s.present_count}</span>
-                  <span className="text-red-500">✗ {s.absent_count}</span>
-                </>}
-              </div>
-            </button>
-          ))}
+          {sessions.map(s => {
+            const past = isPast(s);
+            return (
+              <button key={s.id} onClick={() => setSelected(s)}
+                className={`w-full text-left p-3 rounded-xl border transition ${
+                  selected?.id === s.id
+                    ? 'border-cortex-accent bg-cortex-accent/5'
+                    : 'border-cortex-border bg-cortex-bg hover:border-cortex-muted/50'
+                } ${past ? 'opacity-60' : ''}`}>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="text-cortex-text text-sm font-medium leading-tight line-clamp-2">{s.title}</span>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_STYLES[s.status]}`}>
+                      {s.status}
+                    </span>
+                    {past && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cortex-border text-cortex-muted font-medium">PAST</span>}
+                  </div>
+                </div>
+                <div className="text-cortex-muted text-xs">{fmt(s.scheduled_date)}</div>
+                <div className="text-cortex-muted text-xs">{s.start_time} – {s.end_time}</div>
+                {s.location && <div className="text-cortex-muted text-xs truncate">📍 {s.location}</div>}
+                <div className="flex gap-3 mt-2 text-xs text-cortex-muted">
+                  <span>👥 {s.enrolled_count}</span>
+                  {(s.present_count > 0 || s.absent_count > 0) && <>
+                    <span className="text-green-600">✓ {s.present_count}</span>
+                    <span className="text-red-500">✗ {s.absent_count}</span>
+                  </>}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── Detail panel ─────────────────────────────────────────────────────── */}
+      {/* ── Detail panel ── */}
       <div className="flex-1 overflow-y-auto p-6">
         {!selected ? (
           <div className="h-full flex items-center justify-center text-cortex-muted">
@@ -240,6 +296,7 @@ export default function PhysicalTrainingPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[selected.status]}`}>
                     {selected.status}
                   </span>
+                  {isPastSelected && <span className="text-xs px-2 py-0.5 rounded-full bg-cortex-border text-cortex-muted font-medium">PAST</span>}
                 </div>
                 <div className="text-cortex-muted text-sm">
                   {fmt(selected.scheduled_date)} · {selected.start_time} – {selected.end_time}
@@ -247,6 +304,24 @@ export default function PhysicalTrainingPage() {
                 </div>
                 {selected.trainer_name && <div className="text-cortex-muted text-xs mt-0.5">Trainer: {selected.trainer_name}</div>}
                 {selected.description && <div className="text-cortex-muted text-sm mt-2">{selected.description}</div>}
+
+                {/* Google Meet / Calendar links */}
+                {(selected.google_meet_link || selected.google_calendar_link) && (
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    {selected.google_meet_link && (
+                      <a href={selected.google_meet_link} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80 transition font-medium">
+                        📹 Join Google Meet
+                      </a>
+                    )}
+                    {selected.google_calendar_link && (
+                      <a href={selected.google_calendar_link} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-cortex-border text-cortex-muted hover:bg-cortex-bg transition">
+                        📅 View in Calendar
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Action buttons */}
@@ -302,76 +377,153 @@ export default function PhysicalTrainingPage() {
               ))}
             </div>
 
-            {/* Attendance table */}
-            <div className="bg-cortex-surface border border-cortex-border rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-cortex-border flex items-center justify-between">
-                <h3 className="font-semibold text-cortex-text text-sm">
-                  Attendance ({enrollments.length})
-                </h3>
-                {enrollments.length > 0 && !isCancelled && (
-                  <div className="flex gap-2">
-                    <button onClick={() => markAllAttendance('present')}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:opacity-80 transition">
-                      All Present
-                    </button>
-                    <button onClick={() => markAllAttendance('absent')}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 hover:opacity-80 transition">
-                      All Absent
-                    </button>
+            {/* Tabs */}
+            <div className="flex gap-1 bg-cortex-bg border border-cortex-border rounded-xl p-1 mb-4 w-fit">
+              {[['attendance', '👥 Attendance'], ['chat', '💬 Chat']].map(([v, l]) => (
+                <button key={v} onClick={() => setActiveTab(v)}
+                  className={`px-4 py-1.5 rounded-lg text-sm transition ${activeTab === v ? 'bg-cortex-surface text-cortex-text font-medium shadow-sm' : 'text-cortex-muted hover:text-cortex-text'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Attendance tab */}
+            {activeTab === 'attendance' && (
+              <div className="bg-cortex-surface border border-cortex-border rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-cortex-border flex items-center justify-between">
+                  <h3 className="font-semibold text-cortex-text text-sm">
+                    Attendance ({enrollments.length})
+                  </h3>
+                  {enrollments.length > 0 && !isCancelled && (
+                    <div className="flex gap-2">
+                      <button onClick={() => markAllAttendance('present')}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:opacity-80 transition">
+                        All Present
+                      </button>
+                      <button onClick={() => markAllAttendance('absent')}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 hover:opacity-80 transition">
+                        All Absent
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {enrollments.length === 0 ? (
+                  <div className="p-8 text-center text-cortex-muted text-sm">No learners enrolled yet</div>
+                ) : (
+                  <div className="divide-y divide-cortex-border">
+                    {enrollments.map(e => {
+                      const ack = ackStatus(e);
+                      return (
+                        <div key={e.user_id} className="flex items-center gap-4 px-5 py-3">
+                          <div className="w-8 h-8 rounded-full bg-cortex-accent/20 text-cortex-accent flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {(e.display_name || e.email)[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-cortex-text truncate">{e.display_name || e.email}</div>
+                            <div className="text-xs text-cortex-muted flex gap-2 flex-wrap">
+                              <span>{e.email}</span>
+                              {e.learner_type_name && <span>· {e.learner_type_name}</span>}
+                            </div>
+                          </div>
+                          {/* Ack status pill */}
+                          <div className="flex-shrink-0">
+                            {ack === 'acked' && (
+                              <span title={`Acknowledged ${new Date(e.acknowledged_at).toLocaleString('en-AE')}`}
+                                className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium">
+                                ✓ Ack'd
+                              </span>
+                            )}
+                            {ack === 'needs-reack' && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                                🔄 Re-ack needed
+                              </span>
+                            )}
+                            {ack === 'pending' && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 font-medium">
+                                ⏳ Pending
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ATTEND_STYLES[e.attendance_status]}`}>
+                              {e.attendance_status}
+                            </span>
+                            {!isCancelled && <>
+                              <button disabled={attendSaving[e.user_id] || e.attendance_status === 'present'}
+                                onClick={() => markAttendance(e.user_id, 'present')}
+                                className="text-xs px-2 py-1 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 disabled:opacity-40 hover:opacity-80 transition">
+                                ✓
+                              </button>
+                              <button disabled={attendSaving[e.user_id] || e.attendance_status === 'absent'}
+                                onClick={() => markAttendance(e.user_id, 'absent')}
+                                className="text-xs px-2 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 disabled:opacity-40 hover:opacity-80 transition">
+                                ✗
+                              </button>
+                            </>}
+                            <button onClick={() => removeEnrollment(e.user_id)}
+                              className="text-xs px-2 py-1 rounded-lg text-cortex-muted hover:text-red-500 transition">
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+            )}
 
-              {enrollments.length === 0 ? (
-                <div className="p-8 text-center text-cortex-muted text-sm">No learners enrolled yet</div>
-              ) : (
-                <div className="divide-y divide-cortex-border">
-                  {enrollments.map(e => (
-                    <div key={e.user_id} className="flex items-center gap-4 px-5 py-3">
-                      <div className="w-8 h-8 rounded-full bg-cortex-accent/20 text-cortex-accent flex items-center justify-center text-sm font-bold flex-shrink-0">
-                        {(e.display_name || e.email)[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-cortex-text truncate">{e.display_name || e.email}</div>
-                        <div className="text-xs text-cortex-muted flex gap-2 flex-wrap">
-                          <span>{e.email}</span>
-                          {e.learner_type_name && <span>· {e.learner_type_name}</span>}
-                          {e.acknowledged_at && <span className="text-cortex-accent">· ✓ Ack'd</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ATTEND_STYLES[e.attendance_status]}`}>
-                          {e.attendance_status}
-                        </span>
-                        {!isCancelled && <>
-                          <button disabled={attendSaving[e.user_id] || e.attendance_status === 'present'}
-                            onClick={() => markAttendance(e.user_id, 'present')}
-                            className="text-xs px-2 py-1 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 disabled:opacity-40 hover:opacity-80 transition">
-                            ✓
-                          </button>
-                          <button disabled={attendSaving[e.user_id] || e.attendance_status === 'absent'}
-                            onClick={() => markAttendance(e.user_id, 'absent')}
-                            className="text-xs px-2 py-1 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 disabled:opacity-40 hover:opacity-80 transition">
-                            ✗
-                          </button>
-                        </>}
-                        <button onClick={() => removeEnrollment(e.user_id)}
-                          className="text-xs px-2 py-1 rounded-lg text-cortex-muted hover:text-red-500 transition">
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Chat tab */}
+            {activeTab === 'chat' && (
+              <div className="bg-cortex-surface border border-cortex-border rounded-xl overflow-hidden flex flex-col" style={{ height: '420px' }}>
+                <div className="px-5 py-3 border-b border-cortex-border flex-shrink-0">
+                  <h3 className="font-semibold text-cortex-text text-sm">Session Chat</h3>
                 </div>
-              )}
-            </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {chatLoading ? (
+                    <div className="flex items-center justify-center h-full text-cortex-muted text-sm">
+                      <div className="w-4 h-4 border-2 border-cortex-accent border-t-transparent rounded-full animate-spin mr-2" />
+                      Loading…
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-cortex-muted text-sm">No messages yet</div>
+                  ) : (
+                    messages.map(m => {
+                      const isMe = m.user_id === user?.id;
+                      return (
+                        <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${isMe ? 'bg-cortex-accent text-white' : 'bg-cortex-bg border border-cortex-border text-cortex-text'}`}>
+                            {!isMe && <div className="text-[11px] font-semibold mb-1 text-cortex-accent">{m.display_name || m.email}</div>}
+                            <div className="text-sm">{m.message}</div>
+                            <div className={`text-[10px] mt-1 ${isMe ? 'text-white/60' : 'text-cortex-muted'}`}>
+                              {new Date(m.created_at).toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+                <div className="flex-shrink-0 px-4 py-3 border-t border-cortex-border flex gap-2">
+                  <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                    placeholder="Type a message…"
+                    className="flex-1 bg-cortex-bg border border-cortex-border rounded-lg px-3 py-2 text-cortex-text text-sm focus:outline-none focus:border-cortex-accent" />
+                  <button onClick={sendChatMessage} disabled={!chatInput.trim() || chatSending}
+                    className="px-4 py-2 bg-cortex-accent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition">
+                    {chatSending ? '…' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* ════ MODALS ════════════════════════════════════════════════════════ */}
 
-      {/* Create / Edit session */}
       {(modal === 'create' || modal === 'edit') && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-cortex-surface border border-cortex-border rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -446,13 +598,12 @@ export default function PhysicalTrainingPage() {
         </div>
       )}
 
-      {/* Reset / Reschedule */}
       {modal === 'reset' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-cortex-surface border border-cortex-border rounded-2xl w-full max-w-md shadow-2xl">
             <div className="px-6 py-4 border-b border-cortex-border">
               <h2 className="font-semibold text-cortex-text">↺ Reset / Reschedule</h2>
-              <p className="text-xs text-cortex-muted mt-0.5">Clears all attendance marks and sets status back to Scheduled. Optionally pick a new date/time.</p>
+              <p className="text-xs text-cortex-muted mt-0.5">Clears all attendance marks and sets status back to Scheduled.</p>
             </div>
             <form onSubmit={resetSession} className="p-6 space-y-4">
               <div>
@@ -488,7 +639,6 @@ export default function PhysicalTrainingPage() {
         </div>
       )}
 
-      {/* Delete confirm */}
       {modal === 'delete_confirm' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-cortex-surface border border-cortex-border rounded-2xl w-full max-w-sm shadow-2xl p-6">
@@ -496,7 +646,7 @@ export default function PhysicalTrainingPage() {
               <div className="text-4xl mb-3">🗑</div>
               <h2 className="font-semibold text-cortex-text">Delete Session?</h2>
               <p className="text-sm text-cortex-muted mt-2">
-                This will permanently delete <strong className="text-cortex-text">"{selected?.title}"</strong> and all {selected?.enrolled_count || 0} enrollments. This cannot be undone.
+                This will permanently delete <strong className="text-cortex-text">"{selected?.title}"</strong> and all {selected?.enrolled_count || 0} enrollments.
               </p>
             </div>
             <div className="flex gap-3">
@@ -513,7 +663,6 @@ export default function PhysicalTrainingPage() {
         </div>
       )}
 
-      {/* Enroll learners */}
       {modal === 'enroll' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-cortex-surface border border-cortex-border rounded-2xl w-full max-w-md shadow-2xl">
@@ -538,7 +687,6 @@ export default function PhysicalTrainingPage() {
                     <option value="">— Select type —</option>
                     {learnerTypes.map(t => <option key={t.id} value={t.id}>{t.name} ({t.learner_count} learners)</option>)}
                   </select>
-                  <p className="text-xs text-cortex-muted mt-1.5">All active learners of this type will be enrolled.</p>
                 </div>
               ) : (
                 <div>

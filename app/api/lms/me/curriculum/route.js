@@ -23,7 +23,9 @@ export async function GET(request) {
              l.sort_order AS lesson_order, l.duration_seconds,
              COALESCE(ulp.percent_watched, 0)          AS percent_watched,
              COALESCE(ulp.completed, false)             AS completed,
-             ulp.last_position_seconds
+             ulp.last_position_seconds,
+             ulp.first_viewed_at,
+             la.notified_at
       FROM lms_lesson_assignments la
       JOIN lms_lessons  l ON la.lesson_id  = l.id
       JOIN lms_sections s ON l.section_id  = s.id
@@ -35,6 +37,9 @@ export async function GET(request) {
     `, [user.id, learner_type_id]);
 
     const courseMap = {};
+    const now = new Date();
+    const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000);
+
     for (const row of lessonsRes.rows) {
       if (!courseMap[row.course_id])
         courseMap[row.course_id] = { id: row.course_id, title: row.course_title, sections: {} };
@@ -45,11 +50,18 @@ export async function GET(request) {
           sort_order: row.section_order, parent_section_id: row.parent_section_id,
           lessons: []
         };
+
+      // A lesson is "new" if notified within last 14 days and user has never viewed it
+      const isNew = row.notified_at
+        && new Date(row.notified_at) > fourteenDaysAgo
+        && !row.first_viewed_at;
+
       sections[row.section_id].lessons.push({
         id: row.lesson_id, title: row.lesson_title,
         sort_order: row.lesson_order, duration_seconds: row.duration_seconds,
         percent_watched: row.percent_watched, completed: row.completed,
-        last_position_seconds: row.last_position_seconds
+        last_position_seconds: row.last_position_seconds,
+        is_new: isNew
       });
     }
 
