@@ -59,7 +59,7 @@ export async function PUT(request, { params }) {
     const r = await pool.query(`
       UPDATE lms_lessons SET
         title            = COALESCE($1, title),
-        manual_markdown  = COALESCE($2, manual_markdown),
+        manual_markdown  = $2,
         sort_order       = COALESCE($3, sort_order),
         is_active        = COALESCE($4, is_active),
         duration_seconds = COALESCE($5, duration_seconds),

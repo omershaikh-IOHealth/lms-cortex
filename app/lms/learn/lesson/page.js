@@ -199,6 +199,8 @@ export default function LessonPage() {
 
   const completed = progress?.completed || maxWatchedPctRef.current >= COMPLETION_THRESHOLD;
   const videoUrl = lesson.video_url || null;
+  const hasVideo = !!videoUrl;
+  const hasManual = !!lesson.manual_markdown;
 
   return (
     <div className="flex flex-col h-screen bg-gray-950">
@@ -219,11 +221,21 @@ export default function LessonPage() {
         </div>
       </div>
 
-      {/* Split view */}
-      <div ref={containerRef} className="flex flex-1 overflow-hidden" style={{ cursor: isDragging ? 'col-resize' : 'default' }}>
-        {/* Video pane */}
-        <div className="flex-shrink-0 bg-black flex items-center justify-center" style={{ width: `${splitPct}%` }}>
-          {videoUrl ? (
+      {/* Content area */}
+      {!hasVideo && !hasManual ? (
+        /* No content at all */
+        <div className="flex-1 flex items-center justify-center text-center">
+          <div>
+            <div className="text-5xl mb-4">📭</div>
+            <div className="text-gray-400 text-base font-medium">No content available yet</div>
+            <div className="text-gray-600 text-sm mt-1">Check back later or contact your training team.</div>
+          </div>
+        </div>
+      ) : hasVideo && hasManual ? (
+        /* Both: split view */
+        <div ref={containerRef} className="flex flex-1 overflow-hidden" style={{ cursor: isDragging ? 'col-resize' : 'default' }}>
+          {/* Video pane */}
+          <div className="flex-shrink-0 bg-black flex items-center justify-center" style={{ width: `${splitPct}%` }}>
             <video
               ref={videoRef}
               src={videoUrl}
@@ -235,24 +247,48 @@ export default function LessonPage() {
               onEnded={onVideoEnded}
               onClick={() => { pushEvent('click', { target: 'video' }); resetIdle(); }}
             />
-          ) : (
-            <div className="text-gray-600 text-center p-8">
-              <div className="text-4xl mb-3">🎬</div>
-              <div className="text-sm">No video uploaded for this lesson</div>
+          </div>
+          {/* Divider */}
+          <div
+            onMouseDown={onDividerMouseDown}
+            className="w-1.5 flex-shrink-0 bg-gray-800 hover:bg-blue-600 transition cursor-col-resize flex items-center justify-center"
+            style={{ cursor: 'col-resize' }}
+          >
+            <div className="w-0.5 h-8 bg-gray-600 rounded" />
+          </div>
+          {/* Manual pane */}
+          <div
+            className="flex-1 overflow-y-auto bg-gray-950"
+            onScroll={(e) => {
+              const el = e.target;
+              const pct = Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100);
+              pushEvent('scroll', { depth_pct: pct });
+              resetIdle();
+            }}
+            onMouseEnter={() => pushEvent('manual_view_heartbeat')}
+          >
+            <div className="max-w-3xl">
+              <SimpleMarkdown content={lesson.manual_markdown} />
             </div>
-          )}
+          </div>
         </div>
-
-        {/* Divider */}
-        <div
-          onMouseDown={onDividerMouseDown}
-          className="w-1.5 flex-shrink-0 bg-gray-800 hover:bg-blue-600 transition cursor-col-resize flex items-center justify-center"
-          style={{ cursor: 'col-resize' }}
-        >
-          <div className="w-0.5 h-8 bg-gray-600 rounded" />
+      ) : hasVideo ? (
+        /* Video only: full width */
+        <div className="flex-1 bg-black flex items-center justify-center">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            controls
+            className="w-full h-full object-contain"
+            onPlay={onVideoPlay}
+            onPause={onVideoPause}
+            onSeeked={onVideoSeeked}
+            onEnded={onVideoEnded}
+            onClick={() => { pushEvent('click', { target: 'video' }); resetIdle(); }}
+          />
         </div>
-
-        {/* Manual pane */}
+      ) : (
+        /* Manual only: full width */
         <div
           className="flex-1 overflow-y-auto bg-gray-950"
           onScroll={(e) => {
@@ -263,11 +299,11 @@ export default function LessonPage() {
           }}
           onMouseEnter={() => pushEvent('manual_view_heartbeat')}
         >
-          <div className="max-w-3xl">
+          <div className="max-w-3xl mx-auto">
             <SimpleMarkdown content={lesson.manual_markdown} />
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
