@@ -69,6 +69,20 @@ export async function GET(request) {
         return NextResponse.redirect(`${origin}/login?error=google_rejected`);
       }
 
+      // Store Google tokens for Calendar/Chat API use
+      if (tokens.access_token) {
+        const expiry = tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null;
+        await pool.query(`
+          INSERT INTO google_calendar_tokens (user_id, access_token, refresh_token, expiry)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (user_id) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = COALESCE(EXCLUDED.refresh_token, google_calendar_tokens.refresh_token),
+            expiry = EXCLUDED.expiry,
+            updated_at = NOW()
+        `, [existing.id, tokens.access_token, tokens.refresh_token || null, expiry]);
+      }
+
       // Active — issue JWT and redirect
       const token = await signToken({
         id:   existing.id,

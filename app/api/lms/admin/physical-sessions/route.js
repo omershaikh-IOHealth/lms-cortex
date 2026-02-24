@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { requireRole } from '@/lib/server-auth';
+import { createCalendarEvent, createChatSpace } from '@/lib/google-apis';
 
 const STATUS_QUERY = `
   CASE
@@ -68,6 +69,7 @@ export async function POST(request) {
 
   const pool = getPool();
   try {
+    // Insert session first to get the ID
     const result = await pool.query(`
       INSERT INTO lms_physical_sessions
         (title, description, location, trainer_id, scheduled_date, start_time, end_time, max_capacity, created_by, status)
@@ -75,7 +77,40 @@ export async function POST(request) {
     `, [title.trim(), description || null, location || null,
         trainer_id || null, scheduled_date, start_time, end_time,
         max_capacity || null, user.id]);
-    return NextResponse.json(result.rows[0], { status: 201 });
+
+    const session = result.rows[0];
+
+    // Create Google Calendar event + Chat space in background (don't block the response on failure)
+    const [calResult, chatResult] = await Promise.allSettled([
+      createCalendarEvent(user.id, session),
+      createChatSpace(user.id, title.trim()),
+    ]);
+
+    const cal  = calResult.status  === 'fulfilled' ? calResult.value  : null;
+    const chat = chatResult.status === 'fulfilled' ? chatResult.value : null;
+
+    // Update session with Google links if available
+    if (cal || chat) {
+      const updated = await pool.query(`
+        UPDATE lms_physical_sessions SET
+          google_calendar_event_id = COALESCE($1, google_calendar_event_id),
+          google_calendar_link     = COALESCE($2, google_calendar_link),
+          google_meet_link         = COALESCE($3, google_meet_link),
+          google_chat_space_id     = COALESCE($4, google_chat_space_id),
+          google_chat_link         = COALESCE($5, google_chat_link)
+        WHERE id = $6 RETURNING *
+      `, [
+        cal?.event_id      || null,
+        cal?.calendar_link || null,
+        cal?.meet_link     || null,
+        chat?.space_id     || null,
+        chat?.space_link   || null,
+        session.id,
+      ]);
+      return NextResponse.json(updated.rows[0], { status: 201 });
+    }
+
+    return NextResponse.json(session, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

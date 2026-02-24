@@ -8,9 +8,16 @@ export async function GET(request) {
     client_id:     process.env.GOOGLE_CLIENT_ID,
     redirect_uri:  redirectUri,
     response_type: 'code',
-    scope:         'openid email profile',
+    scope: [
+      'openid',
+      'email',
+      'profile',
+      'https://www.googleapis.com/auth/calendar.events',
+      'https://www.googleapis.com/auth/chat.spaces.create',
+      'https://www.googleapis.com/auth/chat.memberships',
+    ].join(' '),
     access_type:   'offline',
-    prompt:        'select_account',
+    prompt:        'consent',  // force refresh_token to be returned every time
   });
 
   return NextResponse.redirect(
