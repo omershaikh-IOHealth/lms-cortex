@@ -1,6 +1,7 @@
 // frontend/app/lms/admin/physical-training/page.js
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
 
@@ -29,7 +30,14 @@ const ackStatus = (e) => {
 const EMPTY_FORM = { title: '', description: '', location: '', trainer_id: '', scheduled_date: '', start_time: '', end_time: '', max_capacity: '' };
 
 export default function PhysicalTrainingPage() {
+  return <Suspense><PhysicalTrainingInner /></Suspense>;
+}
+
+function PhysicalTrainingInner() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const googleConnected = searchParams.get('google_connected') === '1';
+  const [googleBanner, setGoogleBanner] = useState(googleConnected);
   const [sessions, setSessions]         = useState([]);
   const [trainers, setTrainers]         = useState([]);
   const [learnerTypes, setLearnerTypes] = useState([]);
@@ -232,12 +240,24 @@ export default function PhysicalTrainingPage() {
 
       {/* ── Session list sidebar ── */}
       <div className="w-80 flex-shrink-0 border-r border-cortex-border bg-cortex-surface flex flex-col">
-        <div className="p-4 border-b border-cortex-border flex items-center justify-between">
-          <h1 className="font-semibold text-cortex-text text-sm">Physical Training</h1>
-          <button onClick={openCreate}
-            className="bg-cortex-accent text-white text-xs px-3 py-1.5 rounded-lg hover:opacity-90 transition font-medium">
-            + New Session
-          </button>
+        <div className="p-4 border-b border-cortex-border">
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="font-semibold text-cortex-text text-sm">Physical Training</h1>
+            <button onClick={openCreate}
+              className="bg-cortex-accent text-white text-xs px-3 py-1.5 rounded-lg hover:opacity-90 transition font-medium">
+              + New Session
+            </button>
+          </div>
+          <a href="/api/auth/google/connect"
+            className="flex items-center gap-1.5 text-[11px] text-cortex-muted hover:text-cortex-text transition">
+            <svg width="12" height="12" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Connect Google Calendar &amp; Chat
+          </a>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {sessions.length === 0 && (
@@ -279,6 +299,13 @@ export default function PhysicalTrainingPage() {
 
       {/* ── Detail panel ── */}
       <div className="flex-1 overflow-y-auto p-6">
+        {googleBanner && (
+          <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 rounded-xl px-4 py-3 text-sm flex items-center justify-between">
+            <span>✅ Google Calendar &amp; Chat connected! New sessions will automatically get a Meet link and Chat space.</span>
+            <button onClick={() => setGoogleBanner(false)} className="text-green-600 hover:text-green-800 ml-3 flex-shrink-0">✕</button>
+          </div>
+        )}
+
         {!selected ? (
           <div className="h-full flex items-center justify-center text-cortex-muted">
             <div className="text-center">
@@ -305,23 +332,33 @@ export default function PhysicalTrainingPage() {
                 {selected.trainer_name && <div className="text-cortex-muted text-xs mt-0.5">Trainer: {selected.trainer_name}</div>}
                 {selected.description && <div className="text-cortex-muted text-sm mt-2">{selected.description}</div>}
 
-                {/* Google Meet / Calendar links */}
-                {(selected.google_meet_link || selected.google_calendar_link) && (
-                  <div className="flex gap-2 mt-3 flex-wrap">
-                    {selected.google_meet_link && (
-                      <a href={selected.google_meet_link} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:opacity-80 transition font-medium">
-                        📹 Join Google Meet
-                      </a>
-                    )}
-                    {selected.google_calendar_link && (
-                      <a href={selected.google_calendar_link} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-cortex-border text-cortex-muted hover:bg-cortex-bg transition">
-                        📅 View in Calendar
-                      </a>
-                    )}
-                  </div>
-                )}
+                {/* Google links */}
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  {selected.google_meet_link ? (
+                    <a href={selected.google_meet_link} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition font-medium shadow-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                      Join Google Meet
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-cortex-bg border border-cortex-border text-cortex-muted">
+                      No Meet link — connect Google to auto-create
+                    </span>
+                  )}
+                  {selected.google_calendar_link && (
+                    <a href={selected.google_calendar_link} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-cortex-border text-cortex-muted hover:bg-cortex-bg transition">
+                      📅 View in Calendar
+                    </a>
+                  )}
+                  {selected.google_chat_link && (
+                    <a href={selected.google_chat_link} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition font-medium shadow-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                      Open Google Chat
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* Action buttons */}

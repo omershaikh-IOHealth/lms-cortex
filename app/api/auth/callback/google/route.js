@@ -18,8 +18,49 @@ export async function GET(request) {
   const code  = searchParams.get('code');
   const error = searchParams.get('error');
 
+  const state = searchParams.get('state') || '';
+
   if (error || !code) {
+    // If this was a connect flow, redirect back to the page they came from
+    if (state.startsWith('connect:')) {
+      return NextResponse.redirect(`${origin}/lms/admin/physical-training?google_error=cancelled`);
+    }
     return NextResponse.redirect(`${origin}/login?error=google_cancelled`);
+  }
+
+  // ── Connect flow: just store tokens for existing logged-in user ──────────
+  if (state.startsWith('connect:')) {
+    const userId = state.replace('connect:', '');
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    new URLSearchParams({
+          code,
+          client_id:     process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri:  redirectUri,
+          grant_type:    'authorization_code',
+        }),
+      });
+      const tokens = await tokenRes.json();
+      if (tokenRes.ok && tokens.access_token) {
+        const expiry = tokens.expires_in ? Date.now() + tokens.expires_in * 1000 : null;
+        const pool = getPool();
+        await pool.query(`
+          INSERT INTO google_calendar_tokens (user_id, access_token, refresh_token, expiry)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (user_id) DO UPDATE SET
+            access_token  = EXCLUDED.access_token,
+            refresh_token = COALESCE(EXCLUDED.refresh_token, google_calendar_tokens.refresh_token),
+            expiry        = EXCLUDED.expiry,
+            updated_at    = NOW()
+        `, [userId, tokens.access_token, tokens.refresh_token || null, expiry]);
+      }
+    } catch (err) {
+      console.error('Google connect token error:', err);
+    }
+    return NextResponse.redirect(`${origin}/lms/admin/physical-training?google_connected=1`);
   }
 
   try {
