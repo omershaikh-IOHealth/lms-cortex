@@ -25,22 +25,34 @@ async function callCore42(messages) {
     throw new Error('CORE42_API_KEY not configured');
   }
 
-  const res = await fetch(CORE42_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.CORE42_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: CORE42_MODEL,
-      messages,
-      temperature: 0.2,
-      max_tokens: 1024,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+  let res;
+  try {
+    res = await fetch(CORE42_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CORE42_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: CORE42_MODEL,
+        messages,
+        temperature: 0.2,
+        max_tokens: 1024,
+      }),
+      signal: controller.signal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(timeout);
+    if (fetchErr.name === 'AbortError') throw new Error('Core42 request timed out after 30s');
+    throw new Error(`Core42 network error: ${fetchErr.message}`);
+  }
+  clearTimeout(timeout);
 
   if (!res.ok) {
-    const err = await res.text();
+    const err = await res.text().catch(() => '(no body)');
     throw new Error(`Core42 error ${res.status}: ${err}`);
   }
 
@@ -301,7 +313,8 @@ export async function POST(request) {
     try {
       reply = await callCore42(answerMessages);
     } catch (e) {
-      reply = "I ran into an issue generating a response. Please try again.";
+      console.error('[AI Chat] Answer generation failed:', e.message);
+      reply = `I ran into an issue generating a response: ${e.message}`;
     }
 
     // 11. STEP 3: Validate answer relevance
@@ -363,7 +376,7 @@ export async function POST(request) {
   } catch (err) {
     console.error('[AI Chat] Unhandled error:', err);
     return NextResponse.json({
-      reply: 'I ran into an issue processing your request. Please try again.',
+      reply: `I ran into an issue processing your request: ${err.message}`,
       messages: existingMessages,
     });
   }
