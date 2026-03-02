@@ -1,43 +1,58 @@
 'use client';
-// components/NewBadge.js
-// Renders a pulsing "NEW" pill badge with a hover tooltip describing the feature.
-// Controlled entirely by the NEXT_PUBLIC_SHOW_NEW_BADGES env var.
-//
-// Usage (inline/absolute positioned over a UI element):
-//   <div className="relative inline-block">
-//     <SomeComponent />
-//     <NewBadge description="Click here to schedule a session on the calendar." />
-//   </div>
-//
-// Usage (standalone inline):
-//   <NewBadge description="This panel now supports drag-and-drop reordering." />
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function NewBadge({ description }) {
   const [hovered, setHovered] = useState(false);
+  const [pos, setPos]         = useState({ top: 0, left: 0 });
+  const ref = useRef(null);
 
-  // Only render when the env flag is explicitly "true"
   if (process.env.NEXT_PUBLIC_SHOW_NEW_BADGES !== 'true') return null;
 
+  const handleMouseEnter = () => {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.top + r.height / 2, left: r.right + 8 });
+    }
+    setHovered(true);
+  };
+
   return (
-    <span className="absolute -top-2 -right-2 z-10 inline-block">
-      {/* Pulsing pill */}
+    <span className="inline-flex items-center ml-1 flex-shrink-0">
+      {/* Pulsing pill — inline, never clipped */}
       <span
+        ref={ref}
         className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-cortex-accent text-white animate-pulse cursor-default select-none"
-        onMouseEnter={() => setHovered(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setHovered(false)}
       >
         NEW
       </span>
 
-      {/* Tooltip — appears above the badge */}
-      {hovered && description && (
-        <span className="absolute bottom-full right-0 mb-2 w-48 max-w-48 bg-cortex-surface border border-cortex-border rounded-lg px-3 py-2 text-xs text-cortex-text shadow-lg z-50 whitespace-normal leading-snug pointer-events-none">
+      {/* Tooltip — rendered in document.body via portal, always on top */}
+      {hovered && description && typeof document !== 'undefined' && createPortal(
+        <span style={{
+          position:        'fixed',
+          top:             `${pos.top}px`,
+          left:            `${pos.left}px`,
+          transform:       'translateY(-50%)',
+          zIndex:          99999,
+          width:           '200px',
+          background:      'var(--color-cortex-surface, #1e1e2e)',
+          border:          '1px solid var(--color-cortex-border, #333)',
+          borderRadius:    '8px',
+          padding:         '8px 12px',
+          fontSize:        '12px',
+          lineHeight:      '1.45',
+          color:           'var(--color-cortex-text, #e2e8f0)',
+          boxShadow:       '0 8px 24px rgba(0,0,0,0.35)',
+          pointerEvents:   'none',
+          whiteSpace:      'normal',
+        }}>
           {description}
-          {/* Arrow pointing down toward the badge */}
-          <span className="absolute top-full right-3 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-cortex-border" />
-        </span>
+        </span>,
+        document.body
       )}
     </span>
   );

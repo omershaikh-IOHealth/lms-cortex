@@ -287,13 +287,11 @@ export default function AICompanion() {
 
       {/* Floating bubble button */}
       {!isOpen && (
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9997, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <NewBadge description="New: AI Companion — ask anything about your training, courses, attendance, or progress. Powered by GPT-4o." />
         <button
           onClick={openPanel}
           style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            zIndex: 9997,
             width: '52px',
             height: '52px',
             borderRadius: '50%',
@@ -303,13 +301,13 @@ export default function AICompanion() {
             alignItems: 'center',
             justifyContent: 'center',
             animation: 'aiPulse 2.5s ease-in-out infinite',
+            flexShrink: 0,
           }}
           className="bg-cortex-accent text-white shadow-lg hover:opacity-90 transition-opacity"
           title="Open AI Assistant"
           aria-label="Open AI Assistant"
         >
           <SparkleIcon />
-          <NewBadge description="New: AI Companion — ask anything about your training, courses, attendance, or progress. Powered by GPT-4o." />
           {/* Unread badge */}
           {unreadCount > 0 && (
             <span
@@ -335,6 +333,7 @@ export default function AICompanion() {
             </span>
           )}
         </button>
+        </div>
       )}
 
       {/* Chat panel */}

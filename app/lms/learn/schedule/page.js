@@ -431,7 +431,6 @@ export default function SchedulePage() {
                   {canRate && (
                     <div className="mt-3 pt-3 border-t border-cortex-border space-y-2">
                       {!openFeedback.has(s.session_id) && (
-                        <div className="relative inline-block">
                         <button onClick={() => toggleFeedback(s.session_id)}
                           className={`text-xs px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
                             feedback
@@ -439,9 +438,8 @@ export default function SchedulePage() {
                               : 'border-cortex-border text-cortex-muted hover:text-cortex-accent hover:border-cortex-accent hover:bg-cortex-bg'
                           }`}>
                           {feedback ? `★ Edit Rating (${feedback.rating}/5)` : '☆ Rate this session'}
+                          <NewBadge description="New: Rate this session with stars, leave a comment, and submit requests for new videos or clarifications." />
                         </button>
-                        <NewBadge description="New: Rate this session with stars, leave a comment, and submit requests for new videos or clarifications." />
-                        </div>
                       )}
                       {openFeedback.has(s.session_id) && (
                         <InlineFeedbackPanel

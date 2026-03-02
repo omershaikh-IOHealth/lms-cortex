@@ -230,7 +230,7 @@ function AnalyticsInner() {
           <h1 className="text-lg font-bold text-cortex-text flex-shrink-0">Analytics</h1>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="relative inline-block text-xs text-cortex-muted font-medium">Filters<NewBadge description="New: Filter analytics by organisation, department, trainer, facility, and date range." /></span>
+            <span className="inline-flex items-center text-xs text-cortex-muted font-medium">Filters<NewBadge description="New: Filter analytics by organisation, department, trainer, facility, and date range." /></span>
             {/* Org filter */}
             <select value={filterOrg} onChange={e => { setFilterOrg(e.target.value); setFilterDept(''); }}
               className="bg-cortex-bg border border-cortex-border rounded-lg px-3 py-1.5 text-cortex-text text-sm focus:outline-none focus:border-cortex-accent">
@@ -282,7 +282,7 @@ function AnalyticsInner() {
         <div className="flex px-6 gap-0 border-t border-cortex-border overflow-x-auto">
           {TABS.map(([v, l]) => (
             <button key={v} onClick={() => setActiveTab(v)}
-              className={`relative px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+              className={`inline-flex items-center px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                 activeTab === v
                   ? 'border-cortex-accent text-cortex-accent'
                   : 'border-transparent text-cortex-muted hover:text-cortex-text hover:border-cortex-border'
