@@ -9,14 +9,87 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const companyId = searchParams.get('company_id');
   const deptId    = searchParams.get('department_id');
+  const dateFrom  = searchParams.get('date_from');
+  const dateTo    = searchParams.get('date_to');
 
   const pool = getPool();
   try {
-    const filters = [];
-    const vals    = [];
-    if (companyId) { vals.push(companyId); filters.push(`u.company_id = $${vals.length}`); }
-    if (deptId)    { vals.push(deptId);    filters.push(`(u.department_id = $${vals.length} OR u.sub_department_id = $${vals.length})`); }
-    const where = filters.length ? 'WHERE ' + filters.join(' AND ') : '';
+    // ── User / progress filters (applied to auth_users alias u) ──────────────
+    const userFilters = [];
+    const userVals    = [];
+    if (companyId) { userVals.push(companyId); userFilters.push(`u.company_id = $${userVals.length}`); }
+    if (deptId)    { userVals.push(deptId);    userFilters.push(`(u.department_id = $${userVals.length} OR u.sub_department_id = $${userVals.length})`); }
+    const userWhere = userFilters.length ? 'WHERE ' + userFilters.join(' AND ') : '';
+
+    // ── Session filters (applied to lms_physical_sessions alias ps) ──────────
+    const sessFilters = [];
+    const sessVals    = [];
+    if (dateFrom)  { sessVals.push(dateFrom);  sessFilters.push(`ps.scheduled_date >= $${sessVals.length}`); }
+    if (dateTo)    { sessVals.push(dateTo);    sessFilters.push(`ps.scheduled_date <= $${sessVals.length}`); }
+    if (companyId) {
+      sessVals.push(companyId);
+      sessFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id AND _u.company_id = $${sessVals.length}
+      )`);
+    }
+    if (deptId) {
+      sessVals.push(deptId);
+      sessFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id
+          AND (_u.department_id = $${sessVals.length} OR _u.sub_department_id = $${sessVals.length})
+      )`);
+    }
+    const sessWhere = sessFilters.length ? 'WHERE ' + sessFilters.join(' AND ') : '';
+
+    // ── sessionsByMonth filter (date only for the trend line) ────────────────
+    const monthFilters = [`ps.scheduled_date >= CURRENT_DATE - INTERVAL '12 months'`];
+    const monthVals    = [];
+    if (dateFrom)  { monthVals.push(dateFrom);  monthFilters.push(`ps.scheduled_date >= $${monthVals.length}`); }
+    if (dateTo)    { monthVals.push(dateTo);    monthFilters.push(`ps.scheduled_date <= $${monthVals.length}`); }
+    if (companyId) {
+      monthVals.push(companyId);
+      monthFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id AND _u.company_id = $${monthVals.length}
+      )`);
+    }
+    if (deptId) {
+      monthVals.push(deptId);
+      monthFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id
+          AND (_u.department_id = $${monthVals.length} OR _u.sub_department_id = $${monthVals.length})
+      )`);
+    }
+    const monthWhere = 'WHERE ' + monthFilters.join(' AND ');
+
+    // ── Trainer leaderboard filter ────────────────────────────────────────────
+    const trainerFilters = [];
+    const trainerVals    = [];
+    if (companyId) {
+      trainerVals.push(companyId);
+      trainerFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id AND _u.company_id = $${trainerVals.length}
+      )`);
+    }
+    if (deptId) {
+      trainerVals.push(deptId);
+      trainerFilters.push(`EXISTS (
+        SELECT 1 FROM lms_physical_enrollments _pe
+        JOIN auth_users _u ON _pe.user_id = _u.id
+        WHERE _pe.session_id = ps.id
+          AND (_u.department_id = $${trainerVals.length} OR _u.sub_department_id = $${trainerVals.length})
+      )`);
+    }
+    const trainerWhere = trainerFilters.length ? 'WHERE ' + trainerFilters.join(' AND ') : '';
 
     const [users, sessions, lessons, progress, sessionsByMonth, trainerLeaderboard, completionByLearnerType] = await Promise.all([
       pool.query(`
@@ -25,14 +98,14 @@ export async function GET(request) {
           COUNT(*) FILTER (WHERE role = 'learner')                             AS learners,
           COUNT(*) FILTER (WHERE role IN ('trainer','training'))               AS trainers,
           COUNT(*) FILTER (WHERE is_active = true)                             AS active_users
-        FROM auth_users u ${where}
-      `, vals),
+        FROM auth_users u ${userWhere}
+      `, userVals),
 
       pool.query(`
         SELECT
           COUNT(*)                                                              AS total_sessions,
-          COUNT(*) FILTER (WHERE ps.status = 'completed' OR (ps.scheduled_date < CURRENT_DATE))  AS completed_sessions,
-          COUNT(*) FILTER (WHERE ps.scheduled_date >= CURRENT_DATE AND ps.status != 'cancelled')  AS upcoming_sessions,
+          COUNT(*) FILTER (WHERE ps.status = 'completed' OR ps.scheduled_date < CURRENT_DATE) AS completed_sessions,
+          COUNT(*) FILTER (WHERE ps.scheduled_date >= CURRENT_DATE AND ps.status != 'cancelled') AS upcoming_sessions,
           COUNT(*) FILTER (WHERE ps.session_mode = 'online')                   AS online_sessions,
           COUNT(*) FILTER (WHERE ps.session_mode = 'in_person' OR ps.session_mode IS NULL) AS inperson_sessions,
           COALESCE(AVG(
@@ -48,7 +121,8 @@ export async function GET(request) {
           SELECT COUNT(*) AS cnt FROM lms_physical_enrollments
           WHERE session_id = ps.id AND attendance_status = 'present'
         ) pe_present ON true
-      `),
+        ${sessWhere}
+      `, sessVals),
 
       pool.query(`
         SELECT
@@ -67,21 +141,19 @@ export async function GET(request) {
           COALESCE(SUM(total_watch_seconds), 0)           AS total_watch_seconds
         FROM lms_user_lesson_progress ulp
         JOIN auth_users u ON ulp.user_id = u.id
-        ${where}
-      `, vals),
+        ${userWhere}
+      `, userVals),
 
-      // sessionsByMonth: last 12 months
       pool.query(`
         SELECT
-          TO_CHAR(scheduled_date, 'YYYY-MM') AS month,
-          COUNT(*)::int                       AS count
-        FROM lms_physical_sessions
-        WHERE scheduled_date >= CURRENT_DATE - INTERVAL '12 months'
+          TO_CHAR(ps.scheduled_date, 'YYYY-MM') AS month,
+          COUNT(*)::int                          AS count
+        FROM lms_physical_sessions ps
+        ${monthWhere}
         GROUP BY month
         ORDER BY month
-      `),
+      `, monthVals),
 
-      // trainerLeaderboard: top 5 trainers by session count + avg attendance %
       pool.query(`
         SELECT
           COALESCE(u.display_name, u.email)               AS trainer_name,
@@ -104,12 +176,12 @@ export async function GET(request) {
           SELECT COUNT(*) AS cnt FROM lms_physical_enrollments
           WHERE session_id = ps.id AND attendance_status = 'present'
         ) pe_present ON true
+        ${trainerWhere}
         GROUP BY u.id, u.display_name, u.email
         ORDER BY session_count DESC
         LIMIT 5
-      `),
+      `, trainerVals),
 
-      // completionByLearnerType (summary)
       pool.query(`
         SELECT
           lt.id                                                                      AS learner_type_id,
