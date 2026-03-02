@@ -5,16 +5,23 @@ import { getPool } from '@/lib/db';
 const CORE42_URL = process.env.CORE42_API_URL || 'https://api.core42.ai/v1/chat/completions';
 const CORE42_MODEL = process.env.CORE42_MODEL || 'gpt-4.1';
 
-// Out-of-scope keywords — if none match, short-circuit
+// Out-of-scope keywords — only used for non-admin roles
 const SCOPE_KEYWORDS = [
   'training', 'course', 'session', 'user', 'attendance', 'progress',
   'schedule', 'lesson', 'department', 'organisation', 'organization',
   'feedback', 'analytics', 'enroll', 'enrolment', 'enrollment', 'learner',
   'trainer', 'section', 'module', 'video', 'completion', 'company',
   'companies', 'staff', 'role', 'capacity', 'location',
+  // natural language variants
+  'doctor', 'nurse', 'physician', 'clinician', 'student', 'employee',
+  'person', 'people', 'member', 'team', 'group', 'org', 'hospital',
+  'how many', 'who', 'which', 'list', 'show', 'find', 'count',
+  'my ', 'i ', 'what', 'when', 'where',
 ];
 
-function isInScope(message) {
+function isInScope(role, message) {
+  // Admins have full data access — never block their queries
+  if (role === 'admin') return true;
   const lower = message.toLowerCase();
   return SCOPE_KEYWORDS.some(kw => lower.includes(kw));
 }
@@ -215,8 +222,8 @@ export async function POST(request) {
     );
     const userProfile = profileRes.rows[0] || {};
 
-    // 5. Out-of-scope check
-    if (!isInScope(message)) {
+    // 5. Out-of-scope check (admins are always in scope)
+    if (!isInScope(role, message)) {
       const outOfScopeReply =
         "I can only help with questions related to your training and courses. Please ask me about your sessions, courses, attendance, or progress.";
 
