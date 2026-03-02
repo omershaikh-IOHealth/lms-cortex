@@ -4,6 +4,75 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/auth';
 
+// ── Inline lesson feedback panel ─────────────────────────────────────────────
+function LessonFeedback({ lessonId }) {
+  const [open,    setOpen]    = useState(false);
+  const [rating,  setRating]  = useState(0);
+  const [hover,   setHover]   = useState(0);
+  const [comment, setComment] = useState('');
+  const [saved,   setSaved]   = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [existing, setExisting] = useState(null);
+
+  useEffect(() => {
+    apiFetch(`/api/lms/feedback?reference_type=lesson&reference_id=${lessonId}`)
+      .then(r => r?.json()).then(d => {
+        if (d) { setExisting(d); setRating(d.rating); setComment(d.comment || ''); }
+      });
+  }, [lessonId]);
+
+  const submit = async () => {
+    if (!rating) return;
+    setSaving(true);
+    await apiFetch('/api/lms/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ reference_type: 'lesson', reference_id: Number(lessonId), rating, comment }),
+    });
+    setSaved(true); setSaving(false);
+    setTimeout(() => { setSaved(false); setOpen(false); }, 1500);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="text-xs px-2.5 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-yellow-400 hover:border-yellow-500 transition flex items-center gap-1"
+      >
+        {existing ? `★ ${existing.rating}/5` : '☆ Rate'}
+      </button>
+      {open && (
+        <div className="absolute top-12 right-4 z-50 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-4 w-72">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-white text-sm font-semibold">Rate this lesson</span>
+            <button onClick={() => setOpen(false)} className="text-gray-500 hover:text-white text-lg leading-none">×</button>
+          </div>
+          {/* Stars */}
+          <div className="flex gap-1 mb-3">
+            {[1,2,3,4,5].map(s => (
+              <button key={s}
+                onMouseEnter={() => setHover(s)} onMouseLeave={() => setHover(0)}
+                onClick={() => setRating(s)}
+                className="text-2xl transition"
+                style={{ color: s <= (hover || rating) ? '#f59e0b' : '#4b5563' }}
+              >★</button>
+            ))}
+          </div>
+          <textarea
+            value={comment} onChange={e => setComment(e.target.value)}
+            rows={2} maxLength={500}
+            placeholder="Optional comment…"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-200 text-sm resize-none focus:outline-none focus:border-yellow-500 mb-3"
+          />
+          <button onClick={submit} disabled={!rating || saving}
+            className="w-full py-1.5 rounded-lg bg-yellow-500 hover:bg-yellow-400 text-gray-900 text-sm font-semibold disabled:opacity-50 transition">
+            {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Submit'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 const HEARTBEAT_INTERVAL = 5000; // 5s
 const IDLE_TIMEOUT = 60000; // 60s
@@ -205,7 +274,7 @@ export default function LessonPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-950">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+      <div className="relative flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/lms/learn')} className="text-gray-400 hover:text-white text-sm transition">← Back</button>
           <span className="text-gray-700">|</span>
@@ -218,6 +287,7 @@ export default function LessonPage() {
           {progress?.percent_watched > 0 && !completed && (
             <span className="text-blue-400 text-xs">{progress.percent_watched}% watched</span>
           )}
+          <LessonFeedback lessonId={lessonId} />
         </div>
       </div>
 

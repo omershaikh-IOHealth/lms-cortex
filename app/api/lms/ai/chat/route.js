@@ -26,7 +26,7 @@ async function callCore42(messages) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
   let res;
   try {
@@ -315,42 +315,6 @@ export async function POST(request) {
     } catch (e) {
       console.error('[AI Chat] Answer generation failed:', e.message);
       reply = `I ran into an issue generating a response: ${e.message}`;
-    }
-
-    // 11. STEP 3: Validate answer relevance
-    if (reply && reply.length > 0) {
-      try {
-        const validationMessages = [
-          {
-            role: 'system',
-            content: 'You are a quality checker. Does the given answer adequately address the question? Reply with just YES or NO.',
-          },
-          {
-            role: 'user',
-            content: `Question: ${message}\n\nAnswer: ${reply}\n\nDoes this answer address the question?`,
-          },
-        ];
-        const validation = await callCore42(validationMessages);
-
-        if (validation.trim().toUpperCase().startsWith('NO')) {
-          // Retry answer generation once more with a more explicit prompt
-          const retryAnswerMessages = [
-            { role: 'system', content: answerSystemPrompt },
-            ...recentHistory.map(m => ({ role: m.role, content: m.content })),
-            {
-              role: 'user',
-              content: `${userMsgWithData}\n\nPlease make sure your answer directly addresses the user's question: "${message}"`,
-            },
-          ];
-          try {
-            reply = await callCore42(retryAnswerMessages);
-          } catch {
-            // Keep original reply
-          }
-        }
-      } catch {
-        // Validation failed — keep original reply
-      }
     }
 
     if (!reply) {
