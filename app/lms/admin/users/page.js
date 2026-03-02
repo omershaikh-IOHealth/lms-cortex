@@ -285,6 +285,29 @@ export default function UsersPage() {
     finally { setBackfilling(false); }
   };
 
+  const handleInlineLearnerType = async (user, learnerTypeId) => {
+    // Optimistic update
+    setUsers(prev => prev.map(u => u.id === user.id ? {
+      ...u,
+      learner_type_id:   learnerTypeId ? Number(learnerTypeId) : null,
+      learner_type_name: learnerTypes.find(t => String(t.id) === learnerTypeId)?.name || null,
+    } : u));
+    await apiFetch(`/api/lms/admin/users/${user.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        display_name:      user.display_name,
+        role:              user.role,
+        staff_id:          user.staff_id,
+        is_active:         user.is_active,
+        can_upload_content:user.can_upload_content,
+        company_id:        user.company_id,
+        department_id:     user.department_id,
+        sub_department_id: user.sub_department_id,
+        learner_type_id:   learnerTypeId || null,
+      }),
+    });
+  };
+
   const handleBulkImportUsers = async (rows, extraVals) => {
     const r = await apiFetch('/api/lms/admin/users/bulk', {
       method: 'POST',
@@ -479,6 +502,7 @@ export default function UsersPage() {
                       <span className="inline-flex items-center">Staff ID<NewBadge description="New: Staff IDs are now auto-generated in ORG-INITIALS-NNNN format (e.g. IOH-JS-0001)." /></span>
                     </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Role</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Learner Type</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Organisation</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Department</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Status</th>
@@ -503,13 +527,24 @@ export default function UsersPage() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium w-fit ${ROLE_STYLES[u.role] || 'bg-cortex-border text-cortex-muted'}`}>
                             {u.role}
                           </span>
-                          {u.learner_type_name && (
-                            <span className="text-[10px] text-cortex-muted">{u.learner_type_name}</span>
-                          )}
                           {u.can_upload_content && (
                             <span className="text-[10px] text-cortex-accent">↑ Can upload</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {u.role === 'learner' ? (
+                          <select
+                            value={u.learner_type_id ? String(u.learner_type_id) : ''}
+                            onChange={e => handleInlineLearnerType(u, e.target.value)}
+                            className="bg-cortex-bg border border-cortex-border rounded-lg px-2 py-1 text-xs text-cortex-text focus:outline-none focus:border-cortex-accent w-36"
+                          >
+                            <option value="">— Unassigned —</option>
+                            {learnerTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-cortex-border text-xs">N/A</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-cortex-muted">{u.company_name || <span className="text-cortex-border">—</span>}</td>
                       <td className="px-4 py-3 text-sm text-cortex-muted">
@@ -535,7 +570,7 @@ export default function UsersPage() {
                     </tr>
                   ))}
                   {filteredAll.length === 0 && (
-                    <tr><td colSpan={9} className="px-5 py-10 text-center text-cortex-muted text-sm">No users match the current filters</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-10 text-center text-cortex-muted text-sm">No users match the current filters</td></tr>
                   )}
                 </tbody>
               </table>
