@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/auth';
 import BulkImportModal from '@/components/BulkImportModal';
+import NewBadge from '@/components/NewBadge';
 
 const ROLE_STYLES = {
   admin:   'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
@@ -341,11 +342,14 @@ export default function UsersPage() {
           <p className="text-cortex-muted text-sm mt-0.5">Manage accounts, roles, and organisation assignments</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={handleBackfillStaffIds} disabled={backfilling}
-            title="Generate proper Staff IDs for users who have none or who have their email as Staff ID"
-            className="border border-cortex-border text-cortex-muted text-sm px-4 py-2 rounded-lg hover:text-cortex-text hover:bg-cortex-bg transition font-medium disabled:opacity-50">
-            {backfilling ? '⟳ Fixing…' : '⚙ Fix Staff IDs'}
-          </button>
+          <div className="relative inline-block">
+            <button onClick={handleBackfillStaffIds} disabled={backfilling}
+              title="Generate proper Staff IDs for users who have none or who have their email as Staff ID"
+              className="border border-cortex-border text-cortex-muted text-sm px-4 py-2 rounded-lg hover:text-cortex-text hover:bg-cortex-bg transition font-medium disabled:opacity-50">
+              {backfilling ? '⟳ Fixing…' : '⚙ Fix Staff IDs'}
+            </button>
+            <NewBadge description="New: Auto-generates Staff IDs in IOH-JS-0001 format for users with missing or invalid IDs." />
+          </div>
           <button onClick={() => setShowBulk(true)}
             className="border border-cortex-border text-cortex-muted text-sm px-4 py-2 rounded-lg hover:text-cortex-text hover:bg-cortex-bg transition font-medium">
             ↑ Bulk Import
@@ -473,7 +477,9 @@ export default function UsersPage() {
                         className="rounded border-cortex-border cursor-pointer accent-cortex-accent" />
                     </th>
                     <th className="text-left px-5 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">User</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Staff ID</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">
+                      <span className="relative inline-block">Staff ID<NewBadge description="New: Staff IDs are now auto-generated in ORG-INITIALS-NNNN format (e.g. IOH-JS-0001)." /></span>
+                    </th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Role</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Organisation</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-cortex-muted uppercase tracking-wider">Department</th>

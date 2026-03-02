@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiFetch, useAuth } from '@/lib/auth';
+import NewBadge from '@/components/NewBadge';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -796,8 +797,9 @@ function TrainingSessionsInner() {
             <div className="flex-shrink-0 flex gap-1 px-5 py-2.5 border-b border-cortex-border">
               {[['attendance','👥 Attendance'],['feedback','⭐ Feedback'],['chat','💬 Chat']].map(([v,l]) => (
                 <button key={v} onClick={() => setActiveTab(v)}
-                  className={`px-4 py-1.5 rounded-lg text-sm transition font-medium ${activeTab===v ? 'bg-cortex-accent text-white' : 'text-cortex-muted hover:bg-cortex-bg border border-cortex-border'}`}>
+                  className={`relative px-4 py-1.5 rounded-lg text-sm transition font-medium ${activeTab===v ? 'bg-cortex-accent text-white' : 'text-cortex-muted hover:bg-cortex-bg border border-cortex-border'}`}>
                   {l}
+                  {v === 'feedback' && <NewBadge description="New: Session feedback tab — view star ratings and comments submitted by attendees for this session." />}
                 </button>
               ))}
             </div>
@@ -1083,7 +1085,7 @@ function TrainingSessionsInner() {
                       : 'e.g. Training Room 3, Building B'} />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-cortex-muted block mb-1.5">🏥 Facility</label>
+                  <label className="text-xs font-semibold text-cortex-muted block mb-1.5 flex items-center gap-1.5">🏥 Facility <span className="relative inline-block"><NewBadge description="New: Facility field — track which building or site the session is held in (e.g. Main Hospital, Simulation Lab)." /></span></label>
                   <input value={form.facility} onChange={e => setForm(p=>({...p, facility:e.target.value}))}
                     className="w-full bg-cortex-bg border border-cortex-border rounded-lg px-3 py-2 text-cortex-text text-sm focus:outline-none focus:border-cortex-accent"
                     placeholder="e.g. Main Hospital, Clinic A" />

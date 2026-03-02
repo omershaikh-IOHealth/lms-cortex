@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/server-auth';
 import { getPool } from '@/lib/db';
 
 const CORE42_URL = process.env.CORE42_API_URL || 'https://api.core42.ai/v1/chat/completions';
-const CORE42_MODEL = 'gpt-4.1';
+const CORE42_MODEL = process.env.CORE42_MODEL || 'gpt-4o';
 
 // Out-of-scope keywords — if none match, short-circuit
 const SCOPE_KEYWORDS = [

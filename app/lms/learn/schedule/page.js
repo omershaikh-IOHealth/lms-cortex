@@ -1,8 +1,8 @@
 // frontend/app/lms/learn/schedule/page.js
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { apiFetch } from '@/lib/auth';
-import { useAuth } from '@/lib/auth';
+import { apiFetch, useAuth } from '@/lib/auth';
+import NewBadge from '@/components/NewBadge';
 
 const STATUS_STYLES = {
   scheduled: { dot: 'bg-blue-500',    label: 'Upcoming',       pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -431,6 +431,7 @@ export default function SchedulePage() {
                   {canRate && (
                     <div className="mt-3 pt-3 border-t border-cortex-border space-y-2">
                       {!openFeedback.has(s.session_id) && (
+                        <div className="relative inline-block">
                         <button onClick={() => toggleFeedback(s.session_id)}
                           className={`text-xs px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
                             feedback
@@ -439,6 +440,8 @@ export default function SchedulePage() {
                           }`}>
                           {feedback ? `★ Edit Rating (${feedback.rating}/5)` : '☆ Rate this session'}
                         </button>
+                        <NewBadge description="New: Rate this session with stars, leave a comment, and submit requests for new videos or clarifications." />
+                        </div>
                       )}
                       {openFeedback.has(s.session_id) && (
                         <InlineFeedbackPanel

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from '@/lib/auth';
+import NewBadge from '@/components/NewBadge';
 
 // Sparkle icon (✦ style)
 const SparkleIcon = () => (
@@ -308,6 +309,7 @@ export default function AICompanion() {
           aria-label="Open AI Assistant"
         >
           <SparkleIcon />
+          <NewBadge description="New: AI Companion — ask anything about your training, courses, attendance, or progress. Powered by GPT-4o." />
           {/* Unread badge */}
           {unreadCount > 0 && (
             <span
