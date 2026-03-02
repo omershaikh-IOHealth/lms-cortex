@@ -32,24 +32,18 @@ export default function NewBadge({ description }) {
 
       {/* Tooltip — rendered in document.body via portal, always on top */}
       {hovered && description && typeof document !== 'undefined' && createPortal(
-        <span style={{
-          position:        'fixed',
-          top:             `${pos.top}px`,
-          left:            `${pos.left}px`,
-          transform:       'translateY(-50%)',
-          zIndex:          99999,
-          width:           '200px',
-          background:      'var(--color-cortex-surface, #1e1e2e)',
-          border:          '1px solid var(--color-cortex-border, #333)',
-          borderRadius:    '8px',
-          padding:         '8px 12px',
-          fontSize:        '12px',
-          lineHeight:      '1.45',
-          color:           'var(--color-cortex-text, #e2e8f0)',
-          boxShadow:       '0 8px 24px rgba(0,0,0,0.35)',
-          pointerEvents:   'none',
-          whiteSpace:      'normal',
-        }}>
+        <span
+          className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-600 shadow-lg rounded-lg text-xs leading-snug pointer-events-none"
+          style={{
+            position:  'fixed',
+            top:       `${pos.top}px`,
+            left:      `${pos.left}px`,
+            transform: 'translateY(-50%)',
+            zIndex:    99999,
+            width:     '200px',
+            padding:   '8px 12px',
+          }}
+        >
           {description}
         </span>,
         document.body
