@@ -3,7 +3,7 @@ import { getPool } from '@/lib/db';
 import { requireRole } from '@/lib/server-auth';
 
 async function checkAccess(pool, userId, role, sessionId) {
-  if (role === 'admin' || role === 'training') return true;
+  if (role === 'admin') return true;
   if (role === 'trainer') {
     const r = await pool.query('SELECT id FROM lms_physical_sessions WHERE id = $1 AND trainer_id = $2', [sessionId, userId]);
     return r.rows.length > 0;

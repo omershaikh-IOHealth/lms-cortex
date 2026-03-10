@@ -18,6 +18,7 @@ const ADMIN_NAV = [
   { href: "/lms/admin/physical-training", label: "Training Sessions", icon: "calendar" },
   { href: "/lms/admin/learners",          label: "Learner Progress",  icon: "users" },
   { href: "/lms/admin/analytics",         label: "Analytics",         icon: "bar-chart" },
+  { href: "/lms/admin/announcements",     label: "Announcements",     icon: "announcement" },
 ];
 
 const LEARNER_NAV = [
@@ -41,6 +42,7 @@ const Icon = ({ name, size = 16 }) => {
     link: (<><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>),
     calendar: (<><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>),
     "bar-chart": (<><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>),
+    announcement: (<><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></>),
     "play-circle": (<><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></>),
     "check-circle": (<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>),
     sun: (<><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>),
@@ -73,7 +75,7 @@ export default function LMSLayout({ children }) {
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
-    if (!loading && user?.role === "support") router.push("/dashboard");
+    if (!loading && user?.role === "support") router.push("/lms/admin");
     if (!loading && user?.role === "trainer" && pathname === "/lms") router.push("/lms/trainer");
   }, [user, loading, router, pathname]);
 

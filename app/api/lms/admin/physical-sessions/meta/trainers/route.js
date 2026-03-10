@@ -10,7 +10,7 @@ export async function GET(request) {
   try {
     const r = await pool.query(`
       SELECT id, email, display_name FROM auth_users
-      WHERE role IN ('admin','training','trainer') AND is_active = true
+      WHERE role IN ('admin','trainer') AND is_active = true
       ORDER BY display_name
     `);
     return NextResponse.json(r.rows);

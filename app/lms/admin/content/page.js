@@ -22,7 +22,7 @@ const Ic = ({ d, size = 14 }) => (
   </svg>
 );
 
-const EMPTY_COURSE  = { title: '', description: '' };
+const EMPTY_COURSE  = { title: '', description: '', difficulty: '', category: '' };
 const EMPTY_SECTION = { title: '', parent_section_id: '' };
 const EMPTY_LESSON  = { title: '', section_id: '', manual_markdown: '', sort_order: 0, is_active: true };
 const INPUT = 'w-full bg-cortex-bg border border-cortex-border rounded-lg px-3 py-2 text-cortex-text text-sm focus:outline-none focus:border-cortex-accent transition';
@@ -58,6 +58,13 @@ export default function ContentPage() {
   const [assignedIds,  setAssignedIds]  = useState(new Set());
   const [assignSaving, setAssignSaving] = useState({});
 
+  // Quiz panel state
+  const [quizData,    setQuizData]    = useState(null);  // loaded quiz or null
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizForm,    setQuizForm]    = useState({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+  const [quizSaving,  setQuizSaving]  = useState(false);
+  const [quizError,   setQuizError]   = useState('');
+
   // ── loaders ────────────────────────────────────────────────────────────────
   const loadCourses = useCallback(async () => {
     const d = await apiFetch('/api/lms/admin/content/courses').then(r => r?.json());
@@ -86,6 +93,31 @@ export default function ContentPage() {
     setManualEnabled(!!(data.manual_markdown));
     setPanel({ type, data });
     setInlineAdd(null);
+    // Load quiz data if opening quiz panel
+    if (type === 'quiz_course') {
+      setQuizLoading(true);
+      setQuizError('');
+      apiFetch(`/api/lms/admin/content/courses/${data.id}/quiz`).then(r => r?.json()).then(d => {
+        setQuizData(d);
+        if (d) {
+          setQuizForm({
+            title: d.title,
+            pass_threshold: d.pass_threshold,
+            max_attempts: d.max_attempts,
+            is_active: d.is_active,
+            questions: d.questions.map(q => ({
+              id: q.id,
+              question_text: q.question_text,
+              question_type: q.question_type,
+              options: q.options.map(o => ({ id: o.id, option_text: o.option_text, is_correct: o.is_correct })),
+            })),
+          });
+        } else {
+          setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+        }
+        setQuizLoading(false);
+      });
+    }
     // Load assignment data if opening assignment panel
     if (type === 'assign_course') {
       setAssignTypeId('');
@@ -272,6 +304,84 @@ export default function ContentPage() {
     setSaving(false);
   };
 
+  const saveQuiz = async () => {
+    setQuizError(''); setQuizSaving(true);
+    try {
+      // Validate
+      for (const q of quizForm.questions) {
+        if (!q.question_text.trim()) throw new Error('All questions must have text.');
+        if (q.options.length < 2) throw new Error('Each question needs at least 2 options.');
+        if (!q.options.some(o => o.is_correct)) throw new Error('Each question must have at least one correct answer.');
+      }
+      const r = await apiFetch(`/api/lms/admin/content/courses/${panel.data.id}/quiz`, {
+        method: 'POST', body: JSON.stringify(quizForm),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setQuizData({ ...quizForm, id: d.quiz_id });
+      setQuizError('');
+      alert('Quiz saved successfully!');
+    } catch (e) { setQuizError(e.message); }
+    finally { setQuizSaving(false); }
+  };
+
+  const deleteQuiz = async () => {
+    if (!confirm('Delete this quiz? All attempt history will be lost.')) return;
+    await apiFetch(`/api/lms/admin/content/courses/${panel.data.id}/quiz`, { method: 'DELETE' });
+    setQuizData(null);
+    setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+  };
+
+  const addQuestion = () => {
+    setQuizForm(p => ({
+      ...p,
+      questions: [...p.questions, { question_text: '', question_type: 'single', options: [{ option_text: '', is_correct: false }, { option_text: '', is_correct: false }] }],
+    }));
+  };
+
+  const updateQuestion = (qi, field, value) => {
+    setQuizForm(p => {
+      const questions = [...p.questions];
+      questions[qi] = { ...questions[qi], [field]: value };
+      return { ...p, questions };
+    });
+  };
+
+  const removeQuestion = (qi) => {
+    setQuizForm(p => ({ ...p, questions: p.questions.filter((_, i) => i !== qi) }));
+  };
+
+  const addOption = (qi) => {
+    setQuizForm(p => {
+      const questions = [...p.questions];
+      questions[qi] = { ...questions[qi], options: [...questions[qi].options, { option_text: '', is_correct: false }] };
+      return { ...p, questions };
+    });
+  };
+
+  const updateOption = (qi, oi, field, value) => {
+    setQuizForm(p => {
+      const questions = [...p.questions];
+      const options = [...questions[qi].options];
+      // For single-choice, uncheck all others when checking one
+      if (field === 'is_correct' && value && questions[qi].question_type === 'single') {
+        options.forEach((o, i) => { options[i] = { ...o, is_correct: i === oi }; });
+      } else {
+        options[oi] = { ...options[oi], [field]: value };
+      }
+      questions[qi] = { ...questions[qi], options };
+      return { ...p, questions };
+    });
+  };
+
+  const removeOption = (qi, oi) => {
+    setQuizForm(p => {
+      const questions = [...p.questions];
+      questions[qi] = { ...questions[qi], options: questions[qi].options.filter((_, i) => i !== oi) };
+      return { ...p, questions };
+    });
+  };
+
   const toggleLessonActive = async (lesson) => {
     await apiFetch(`/api/lms/admin/content/lessons/${lesson.id}`, {
       method: 'PUT', body: JSON.stringify({ is_active: !lesson.is_active })
@@ -347,6 +457,16 @@ export default function ContentPage() {
   const isPanelCourse   = panel?.type === 'new_course'   || panel?.type === 'edit_course';
   const isPanelPreview  = panel?.type === 'preview_lesson';
   const isPanelAssign   = panel?.type === 'assign_course';
+  const isPanelQuiz     = panel?.type === 'quiz_course';
+
+  // Tab bar for course-level panel (Details / Quiz / Assignments)
+  const COURSE_TABS = [
+    { id: 'details',     label: 'Details',     panelType: 'edit_course',   icon: '✏️' },
+    { id: 'quiz',        label: 'Quiz',        panelType: 'quiz_course',   icon: '📝' },
+    { id: 'assignments', label: 'Assignments', panelType: 'assign_course', icon: '🔗' },
+  ];
+  const activeCourseTab = panel?.type === 'edit_course' ? 'details' : isPanelQuiz ? 'quiz' : isPanelAssign ? 'assignments' : null;
+  const isCoursePanel   = activeCourseTab !== null;
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
@@ -378,8 +498,10 @@ export default function ContentPage() {
                       <Ic d="edit" size={12} />
                     </button>
                   </div>
-                  <div className={`text-xs mt-0.5 ${selectedCourse?.id === c.id ? 'text-white/70' : 'text-cortex-muted'}`}>
-                    {c.lesson_count} lessons
+                  <div className={`flex items-center gap-1.5 text-xs mt-0.5 ${selectedCourse?.id === c.id ? 'text-white/70' : 'text-cortex-muted'}`}>
+                    <span>{c.lesson_count} lessons</span>
+                    {c.difficulty && <span className="capitalize">· {c.difficulty}</span>}
+                    {c.category && <span className="truncate">· {c.category}</span>}
                   </div>
                 </button>
               ))
@@ -404,13 +526,13 @@ export default function ContentPage() {
                 {selectedCourse.description && <div className="text-xs text-cortex-muted truncate">{selectedCourse.description}</div>}
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                <button onClick={() => openPanel('assign_course', { ...selectedCourse })}
+                <button onClick={() => openPanel('edit_course', { ...selectedCourse })}
                   className={`text-xs px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
-                    isPanelAssign
+                    isCoursePanel
                       ? 'border-cortex-accent text-cortex-accent bg-cortex-accent/10'
                       : 'border-cortex-border text-cortex-muted hover:text-cortex-accent hover:border-cortex-accent/50'
                   }`}>
-                  🔗 Assign
+                  <Ic d="edit" size={12} /> Edit course
                 </button>
                 <button onClick={() => { setInlineAdd({ type: 'section', parentId: null, value: '' }); setPanel(null); }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-cortex-accent text-white hover:opacity-90 transition flex items-center gap-1.5">
@@ -466,28 +588,51 @@ export default function ContentPage() {
       {/* ── Column 3: panel ── */}
       {panel && (
         <div className="w-[420px] flex-shrink-0 bg-cortex-surface border-l border-cortex-border flex flex-col shadow-xl">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-cortex-border flex-shrink-0">
-            <h3 className="font-semibold text-cortex-text text-sm">
-              {panel.type === 'new_course'     && 'New Course'}
-              {panel.type === 'edit_course'    && 'Edit Course'}
-              {panel.type === 'new_section'    && 'New Section'}
-              {panel.type === 'edit_section'   && 'Edit Section'}
-              {panel.type === 'new_lesson'     && 'New Lesson'}
-              {panel.type === 'edit_lesson'    && 'Edit Lesson'}
-              {panel.type === 'preview_lesson' && 'Lesson Preview'}
-              {panel.type === 'assign_course'  && 'Manage Assignments'}
-            </h3>
-            <div className="flex items-center gap-2">
-              {isPanelPreview && (
-                <button onClick={() => openPanel('edit_lesson', { ...panel.data })}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-cortex-accent text-white hover:opacity-90 transition flex items-center gap-1.5">
-                  <Ic d="edit" size={12} /> Edit
+          <div className="flex-shrink-0 border-b border-cortex-border">
+            {isCoursePanel ? (
+              /* Tab bar for course panels */
+              <div className="flex items-center justify-between px-5 pt-3">
+                <div className="flex gap-1">
+                  {COURSE_TABS.map(tab => (
+                    <button key={tab.id}
+                      onClick={() => openPanel(tab.panelType, { ...selectedCourse })}
+                      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 transition ${
+                        activeCourseTab === tab.id
+                          ? 'border-cortex-accent text-cortex-accent'
+                          : 'border-transparent text-cortex-muted hover:text-cortex-text'
+                      }`}>
+                      <span>{tab.icon}</span>{tab.label}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={closePanel} className="text-cortex-muted hover:text-cortex-text transition mb-2">
+                  <Ic d="x" size={16} />
                 </button>
-              )}
-              <button onClick={closePanel} className="text-cortex-muted hover:text-cortex-text transition">
-                <Ic d="x" size={16} />
-              </button>
-            </div>
+              </div>
+            ) : (
+              /* Regular header for non-course panels */
+              <div className="flex items-center justify-between px-5 py-3">
+                <h3 className="font-semibold text-cortex-text text-sm">
+                  {panel.type === 'new_section'    && 'New Section'}
+                  {panel.type === 'edit_section'   && 'Edit Section'}
+                  {panel.type === 'new_lesson'     && 'New Lesson'}
+                  {panel.type === 'edit_lesson'    && 'Edit Lesson'}
+                  {panel.type === 'preview_lesson' && 'Lesson Preview'}
+                  {panel.type === 'new_course'     && 'New Course'}
+                </h3>
+                <div className="flex items-center gap-2">
+                  {isPanelPreview && (
+                    <button onClick={() => openPanel('edit_lesson', { ...panel.data })}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-cortex-accent text-white hover:opacity-90 transition flex items-center gap-1.5">
+                      <Ic d="edit" size={12} /> Edit
+                    </button>
+                  )}
+                  <button onClick={closePanel} className="text-cortex-muted hover:text-cortex-text transition">
+                    <Ic d="x" size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -552,6 +697,20 @@ export default function ContentPage() {
                   <textarea value={form.description || ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                     rows={3} className={`${INPUT} resize-none`} placeholder="Optional overview…" />
                 </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Category">
+                    <input value={form.category || ''} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+                      className={INPUT} placeholder="e.g. Compliance" />
+                  </Field>
+                  <Field label="Difficulty">
+                    <select value={form.difficulty || ''} onChange={e => setForm(p => ({ ...p, difficulty: e.target.value }))} className={INPUT}>
+                      <option value="">— None —</option>
+                      <option value="beginner">Beginner</option>
+                      <option value="intermediate">Intermediate</option>
+                      <option value="advanced">Advanced</option>
+                    </select>
+                  </Field>
+                </div>
                 {error && <ErrMsg msg={error} />}
                 <SaveBar saving={saving} label={panel.type === 'new_course' ? 'Create Course' : 'Save'}
                   onCancel={closePanel}
@@ -724,6 +883,153 @@ export default function ContentPage() {
                   onCancel={closePanel}
                   onDelete={panel.type === 'edit_lesson' ? () => setDeletingId({ type: 'lesson', id: panel.data.id }) : null} />
               </form>
+            )}
+
+            {/* ── Quiz panel ── */}
+            {isPanelQuiz && (
+              <div className="flex flex-col h-full">
+                {quizLoading ? (
+                  <div className="p-8 text-center text-cortex-muted text-sm">Loading quiz…</div>
+                ) : (
+                  <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                    {/* Header info */}
+                    <div className="bg-cortex-bg rounded-xl p-4 border border-cortex-border text-xs text-cortex-muted space-y-1">
+                      <div>Set a compulsory quiz for this course. Learners must pass it to mark the course complete.</div>
+                      {quizData && <div className="text-green-500 font-medium mt-1">✓ Quiz is active</div>}
+                    </div>
+
+                    {/* Quiz settings */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Quiz Title">
+                        <input value={quizForm.title} onChange={e => setQuizForm(p => ({ ...p, title: e.target.value }))}
+                          className={INPUT} placeholder="Course Quiz" />
+                      </Field>
+                      <Field label="Pass Mark (%)">
+                        <input type="number" min={1} max={100}
+                          value={quizForm.pass_threshold}
+                          onChange={e => setQuizForm(p => ({ ...p, pass_threshold: Number(e.target.value) }))}
+                          className={INPUT} />
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Max Attempts">
+                        <input type="number" min={1} max={10}
+                          value={quizForm.max_attempts}
+                          onChange={e => setQuizForm(p => ({ ...p, max_attempts: Number(e.target.value) }))}
+                          className={INPUT} />
+                      </Field>
+                      <Field label="Status">
+                        <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                          <input type="checkbox" checked={quizForm.is_active}
+                            onChange={e => setQuizForm(p => ({ ...p, is_active: e.target.checked }))}
+                            className="accent-cortex-accent w-4 h-4" />
+                          <span className="text-sm text-cortex-text">Active</span>
+                        </label>
+                      </Field>
+                    </div>
+
+                    {/* Questions */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-cortex-muted uppercase tracking-wider">
+                          Questions ({quizForm.questions.length})
+                        </span>
+                        <button type="button" onClick={addQuestion}
+                          className="text-xs px-3 py-1 rounded-lg bg-cortex-accent text-white hover:opacity-90 transition flex items-center gap-1">
+                          <Ic d="plus" size={11} /> Add Question
+                        </button>
+                      </div>
+
+                      {quizForm.questions.length === 0 && (
+                        <div className="text-center py-8 text-cortex-muted text-sm border border-dashed border-cortex-border rounded-xl">
+                          No questions yet. Click "Add Question" to start building the quiz.
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        {quizForm.questions.map((q, qi) => (
+                          <div key={qi} className="border border-cortex-border rounded-xl p-4 bg-cortex-bg space-y-3">
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs text-cortex-muted mt-2 font-medium flex-shrink-0">{qi + 1}.</span>
+                              <textarea
+                                value={q.question_text}
+                                onChange={e => updateQuestion(qi, 'question_text', e.target.value)}
+                                rows={2}
+                                className={`${INPUT} flex-1 resize-none text-sm`}
+                                placeholder="Enter question…" />
+                              <button type="button" onClick={() => removeQuestion(qi)}
+                                className="p-1 text-cortex-muted hover:text-red-500 transition flex-shrink-0 mt-1">
+                                <Ic d="trash" size={13} />
+                              </button>
+                            </div>
+
+                            {/* Question type */}
+                            <div className="flex gap-3">
+                              {['single', 'multi'].map(t => (
+                                <button key={t} type="button"
+                                  onClick={() => updateQuestion(qi, 'question_type', t)}
+                                  className={`text-xs px-3 py-1 rounded-full border transition capitalize ${
+                                    q.question_type === t
+                                      ? 'border-cortex-accent bg-cortex-accent/10 text-cortex-accent'
+                                      : 'border-cortex-border text-cortex-muted hover:border-cortex-muted'
+                                  }`}>
+                                  {t === 'single' ? 'Single choice' : 'Multi choice'}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Options */}
+                            <div className="space-y-2 pl-1">
+                              {q.options.map((opt, oi) => (
+                                <div key={oi} className="flex items-center gap-2">
+                                  <button type="button"
+                                    onClick={() => updateOption(qi, oi, 'is_correct', !opt.is_correct)}
+                                    title={opt.is_correct ? 'Mark as wrong' : 'Mark as correct'}
+                                    className={`w-5 h-5 rounded-${q.question_type === 'multi' ? 'sm' : 'full'} border-2 flex-shrink-0 flex items-center justify-center transition ${
+                                      opt.is_correct ? 'border-green-500 bg-green-500' : 'border-cortex-border hover:border-green-400'
+                                    }`}>
+                                    {opt.is_correct && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                                  </button>
+                                  <input
+                                    value={opt.option_text}
+                                    onChange={e => updateOption(qi, oi, 'option_text', e.target.value)}
+                                    className={`${INPUT} flex-1 py-1.5 text-sm`}
+                                    placeholder={`Option ${oi + 1}…`} />
+                                  {q.options.length > 2 && (
+                                    <button type="button" onClick={() => removeOption(qi, oi)}
+                                      className="text-cortex-muted hover:text-red-500 transition flex-shrink-0">
+                                      <Ic d="x" size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <button type="button" onClick={() => addOption(qi)}
+                                className="text-xs text-cortex-accent hover:underline pl-7 mt-1">
+                                + Add option
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {quizError && <div className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{quizError}</div>}
+
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={saveQuiz} disabled={quizSaving}
+                        className="flex-1 bg-cortex-accent text-white py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition">
+                        {quizSaving ? 'Saving…' : quizData ? 'Update Quiz' : 'Create Quiz'}
+                      </button>
+                      {quizData && (
+                        <button type="button" onClick={deleteQuiz}
+                          className="px-3 py-2 border border-red-300 dark:border-red-800 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition">
+                          <Ic d="trash" size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ── Assignment panel ── */}

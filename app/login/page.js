@@ -46,18 +46,18 @@ function LoginForm() {
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="text-gray-400">Loading...</div>
+    <div className="min-h-screen flex items-center justify-center bg-cortex-bg">
+      <div className="text-cortex-muted">Loading...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
+    <div className="min-h-screen flex items-center justify-center bg-cortex-bg">
       <div className="w-full max-w-md">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 shadow-2xl">
+        <div className="bg-cortex-surface border border-cortex-border rounded-xl p-8 shadow-2xl">
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-bold text-white">Cortex 2.0</h1>
-            <p className="text-gray-400 text-sm mt-1">Sign in to continue</p>
+            <h1 className="text-2xl font-bold text-cortex-text">Cortex 2.0</h1>
+            <p className="text-cortex-muted text-sm mt-1">Sign in to continue</p>
           </div>
 
           {/* Google OAuth status messages */}
@@ -68,7 +68,7 @@ function LoginForm() {
             </div>
           )}
           {errorParam && GOOGLE_ERROR_MESSAGES[errorParam] && (
-            <div className="mb-4 bg-red-900/30 border border-red-800 text-red-400 rounded-lg px-4 py-2.5 text-sm">
+            <div className="mb-4 bg-cortex-danger/10 border border-cortex-danger text-cortex-danger rounded-lg px-4 py-2.5 text-sm">
               {GOOGLE_ERROR_MESSAGES[errorParam]}
             </div>
           )}
@@ -89,38 +89,38 @@ function LoginForm() {
           </a>
 
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-gray-700" />
-            <span className="text-gray-500 text-xs">or</span>
-            <div className="flex-1 h-px bg-gray-700" />
+            <div className="flex-1 h-px bg-cortex-border" />
+            <span className="text-cortex-muted text-xs">or</span>
+            <div className="flex-1 h-px bg-cortex-border" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Username or Email</label>
+              <label className="block text-sm text-cortex-muted mb-1">Username or Email</label>
               <input
                 type="text"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
                 required
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-cortex-bg border border-cortex-border rounded-lg px-4 py-2.5 text-cortex-text placeholder-cortex-muted focus:outline-none focus:border-cortex-accent transition"
                 placeholder="ann or ann@support.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Password</label>
+              <label className="block text-sm text-cortex-muted mb-1">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-cortex-bg border border-cortex-border rounded-lg px-4 py-2.5 text-cortex-text placeholder-cortex-muted focus:outline-none focus:border-cortex-accent transition"
                 placeholder="••••••••"
               />
             </div>
 
             {error && (
-              <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-lg px-4 py-2.5 text-sm">
+              <div className="bg-cortex-danger/10 border border-cortex-danger text-cortex-danger rounded-lg px-4 py-2.5 text-sm">
                 {error}
               </div>
             )}
@@ -128,15 +128,15 @@ function LoginForm() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-2.5 transition"
+              className="w-full bg-cortex-accent hover:opacity-90 disabled:opacity-50 text-white font-medium rounded-lg py-2.5 transition"
             >
               {submitting ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
 
-          <p className="text-center text-gray-500 text-xs mt-6">
+          <p className="text-center text-cortex-muted text-xs mt-6">
             Don&apos;t have an account?{' '}
-            <a href="/register" className="text-blue-400 hover:text-blue-300 transition">Request access</a>
+            <a href="/register" className="text-cortex-accent hover:opacity-80 transition">Request access</a>
           </p>
         </div>
       </div>
@@ -147,8 +147,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-cortex-bg">
+        <div className="text-cortex-muted">Loading...</div>
       </div>
     }>
       <LoginForm />
@@ -161,8 +161,8 @@ function redirectByRole(role, router) {
     case 'admin':
     case 'training': router.push('/lms/admin'); break;
     case 'learner':  router.push('/lms/learn'); break;
-    case 'support':  router.push('/dashboard'); break;
+    case 'support':  router.push('/lms/admin'); break;
     case 'trainer':  router.push('/lms/trainer'); break;
-    default:         router.push('/dashboard');
+    default:         router.push('/lms/admin');
   }
 }

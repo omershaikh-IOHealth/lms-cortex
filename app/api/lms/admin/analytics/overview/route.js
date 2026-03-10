@@ -96,7 +96,7 @@ export async function GET(request) {
         SELECT
           COUNT(*)                                                              AS total_users,
           COUNT(*) FILTER (WHERE role = 'learner')                             AS learners,
-          COUNT(*) FILTER (WHERE role IN ('trainer','training'))               AS trainers,
+          COUNT(*) FILTER (WHERE role = 'trainer')                             AS trainers,
           COUNT(*) FILTER (WHERE is_active = true)                             AS active_users
         FROM auth_users u ${userWhere}
       `, userVals),

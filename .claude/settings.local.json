@@ -12,5 +12,8 @@
       "Bash(node:*)",
       "Bash(npx next:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ]
 }

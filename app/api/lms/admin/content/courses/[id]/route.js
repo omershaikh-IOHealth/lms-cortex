@@ -7,7 +7,7 @@ export async function PUT(request, { params }) {
   const { authError } = await requireRole(request, 'admin');
   if (authError) return authError;
 
-  const { title, description, is_active } = await request.json();
+  const { title, description, is_active, difficulty, category } = await request.json();
   try {
     const pool = getPool();
     const r = await pool.query(`
@@ -15,9 +15,11 @@ export async function PUT(request, { params }) {
         title       = COALESCE($1, title),
         description = COALESCE($2, description),
         is_active   = COALESCE($3, is_active),
+        difficulty  = $4,
+        category    = $5,
         updated_at  = NOW()
-      WHERE id = $4 RETURNING *
-    `, [title?.trim(), description, is_active, params.id]);
+      WHERE id = $6 RETURNING *
+    `, [title?.trim(), description, is_active, difficulty || null, category || null, params.id]);
     return NextResponse.json(r.rows[0]);
   } catch (e) { return NextResponse.json({ error: e.message }, { status: 500 }); }
 }

@@ -24,14 +24,14 @@ export async function POST(request) {
   const { authError, user } = await requireRole(request, 'admin');
   if (authError) return authError;
 
-  const { title, description } = await request.json();
+  const { title, description, difficulty, category } = await request.json();
   if (!title?.trim()) return NextResponse.json({ error: 'Title required' }, { status: 400 });
 
   try {
     const pool = getPool();
     const r = await pool.query(
-      'INSERT INTO lms_courses (title, description, created_by) VALUES ($1,$2,$3) RETURNING *',
-      [title.trim(), description || null, user.id]
+      'INSERT INTO lms_courses (title, description, difficulty, category, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [title.trim(), description || null, difficulty || null, category || null, user.id]
     );
     return NextResponse.json(r.rows[0], { status: 201 });
   } catch (e) { return NextResponse.json({ error: e.message }, { status: 500 }); }

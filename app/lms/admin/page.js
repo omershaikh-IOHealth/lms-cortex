@@ -44,7 +44,12 @@ export default function LMSAdminPage() {
       {/* Learner progress table */}
       <div className="bg-cortex-surface border border-cortex-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-cortex-border flex items-center justify-between">
-          <h2 className="font-semibold text-cortex-text text-sm">Learner Progress</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-cortex-text text-sm">Learner Progress</h2>
+            {learners.length > 20 && (
+              <span className="text-[11px] text-cortex-muted">showing 20 of {learners.length}</span>
+            )}
+          </div>
           <Link href="/lms/admin/learners" className="text-xs text-cortex-accent hover:underline">View all →</Link>
         </div>
 

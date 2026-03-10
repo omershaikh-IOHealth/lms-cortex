@@ -208,7 +208,7 @@ function AnalyticsInner() {
   }, [playing, timeline]);
 
   // ── Dept options (filtered by org) ────────────────────────────────────────
-  const deptOptions    = departments.filter(d => !d.parent_id && (!filterOrg || String(d.company_id) === filterOrg));
+  const deptOptions    = departments.filter(d => !d.parent_id && (!filterOrg || !d.company_id || String(d.company_id) === filterOrg));
   const subDeptOptions = filterDept ? departments.filter(d => String(d.parent_id) === filterDept) : [];
 
   // ── RENDER ────────────────────────────────────────────────────────────────

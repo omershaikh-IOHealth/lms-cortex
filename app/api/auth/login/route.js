@@ -32,10 +32,10 @@ export async function POST(request) {
       id: user.id,
       email: user.email,
       role: user.role,
-      name: user.display_name,
+      display_name: user.display_name,
     });
 
-    const payload = { token, user: { id: user.id, email: user.email, role: user.role, name: user.display_name } };
+    const payload = { token, user: { id: user.id, email: user.email, role: user.role, display_name: user.display_name } };
     const response = NextResponse.json(payload);
     setAuthCookie(response, token);
     return response;

@@ -17,6 +17,7 @@ export async function GET(request) {
 
     const lessonsRes = await pool.query(`
       SELECT c.id AS course_id, c.title AS course_title,
+             c.difficulty AS course_difficulty, c.category AS course_category,
              s.id AS section_id, s.title AS section_title,
              s.sort_order AS section_order, s.parent_section_id,
              l.id AS lesson_id, l.title AS lesson_title,
@@ -42,7 +43,11 @@ export async function GET(request) {
 
     for (const row of lessonsRes.rows) {
       if (!courseMap[row.course_id])
-        courseMap[row.course_id] = { id: row.course_id, title: row.course_title, sections: {} };
+        courseMap[row.course_id] = {
+          id: row.course_id, title: row.course_title,
+          difficulty: row.course_difficulty, category: row.course_category,
+          sections: {}
+        };
       const sections = courseMap[row.course_id].sections;
       if (!sections[row.section_id])
         sections[row.section_id] = {
@@ -65,8 +70,36 @@ export async function GET(request) {
       });
     }
 
+    const courseIds = Object.keys(courseMap).map(Number);
+
+    // Fetch quiz info for all courses
+    const quizInfo = courseIds.length
+      ? await pool.query(`
+          SELECT q.course_id, q.id AS quiz_id, q.title AS quiz_title, q.pass_threshold,
+                 COALESCE(bool_or(qa.passed), false) AS user_passed,
+                 COUNT(qa.id)::int AS attempt_count
+          FROM lms_quizzes q
+          LEFT JOIN lms_quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = $1
+          WHERE q.course_id = ANY($2) AND q.is_active = true
+          GROUP BY q.course_id, q.id, q.title, q.pass_threshold
+        `, [user.id, courseIds])
+      : { rows: [] };
+
+    const quizMap = {};
+    for (const row of quizInfo.rows) {
+      quizMap[row.course_id] = {
+        quiz_id: row.quiz_id,
+        quiz_title: row.quiz_title,
+        pass_threshold: row.pass_threshold,
+        quiz_passed: row.user_passed,
+        quiz_attempt_count: row.attempt_count,
+      };
+    }
+
     const courses = Object.values(courseMap).map(c => ({
-      ...c, sections: Object.values(c.sections)
+      ...c,
+      sections: Object.values(c.sections),
+      ...(quizMap[c.id] || {}),
     }));
     return NextResponse.json({ courses });
   } catch (err) {
