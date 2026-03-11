@@ -27,7 +27,8 @@ function parseCSV(text) {
 }
 
 async function parseXLSX(file) {
-  const XLSX = (await import('xlsx')).default;
+  const xlsxMod = await import('xlsx');
+  const XLSX = xlsxMod.default ?? xlsxMod;
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {

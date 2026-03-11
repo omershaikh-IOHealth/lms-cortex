@@ -108,6 +108,7 @@ function TrainingSessionsInner() {
   // ── Calendar state ───────────────────────────────────────────────────────
   const [calView, setCalView] = useState('month');
   const [calDate, setCalDate] = useState(new Date());
+  const [topicFilter, setTopicFilter] = useState('');
 
   // ── Session detail ───────────────────────────────────────────────────────
   const [selected,    setSelected]    = useState(null);
@@ -232,7 +233,14 @@ function TrainingSessionsInner() {
 
   const sessionsForDay = (day) => {
     const key = fmtDateInput(day);
-    return sessions.filter(s => s.scheduled_date?.slice(0,10) === key);
+    return sessions.filter(s => {
+      if (s.scheduled_date?.slice(0,10) !== key) return false;
+      if (topicFilter.trim()) {
+        const q = topicFilter.toLowerCase();
+        if (!s.title?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
   };
 
   // ── Detail panel ──────────────────────────────────────────────────────────
@@ -626,6 +634,23 @@ function TrainingSessionsInner() {
             Today
           </button>
           <h2 className="text-base font-bold text-cortex-text truncate">{calTitle()}</h2>
+        </div>
+
+        {/* Topic search */}
+        <div className="relative flex-1 max-w-xs">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-cortex-muted" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="text"
+            value={topicFilter}
+            onChange={e => setTopicFilter(e.target.value)}
+            placeholder="Filter by topic…"
+            className="w-full bg-cortex-bg border border-cortex-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-cortex-text placeholder:text-cortex-muted focus:outline-none focus:border-cortex-accent"
+          />
+          {topicFilter && (
+            <button onClick={() => setTopicFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-cortex-muted hover:text-cortex-text">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
         </div>
 
         {/* Right: view toggle + actions */}

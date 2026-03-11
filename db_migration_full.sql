@@ -92,7 +92,13 @@ ALTER TABLE test.lms_feedback
   ADD COLUMN IF NOT EXISTS request_detail TEXT;
 -- Free-text elaboration of the request_type selected above.
 
--- ── 13. AI Companion sessions table ──────────────────────────
+-- ── 13. Coming Soon courses flag ─────────────────────────────
+ALTER TABLE test.lms_courses
+  ADD COLUMN IF NOT EXISTS is_coming_soon BOOLEAN DEFAULT false;
+-- When true + is_active = false, course shows as "Coming Soon" to learners.
+-- Set is_active = false so it doesn't appear in the active curriculum.
+
+-- ── 14. AI Companion sessions table ──────────────────────────
 CREATE TABLE IF NOT EXISTS test.ai_companion_sessions (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    TEXT NOT NULL UNIQUE,

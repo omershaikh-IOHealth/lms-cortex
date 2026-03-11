@@ -101,7 +101,19 @@ export async function GET(request) {
       sections: Object.values(c.sections),
       ...(quizMap[c.id] || {}),
     }));
-    return NextResponse.json({ courses });
+
+    // Fetch "Coming Soon" courses (is_coming_soon = true, not yet in learner's curriculum)
+    let comingSoon = [];
+    try {
+      const csRes = await pool.query(`
+        SELECT id, title, description, category, difficulty FROM lms_courses
+        WHERE is_coming_soon = true AND is_active = false
+        ORDER BY title
+      `);
+      comingSoon = csRes.rows.map(c => ({ ...c, is_coming_soon: true }));
+    } catch (_) { /* column may not exist yet */ }
+
+    return NextResponse.json({ courses, coming_soon: comingSoon });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

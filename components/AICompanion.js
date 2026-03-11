@@ -95,11 +95,17 @@ export default function AICompanion() {
   const [isLoading, setIsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Drag state
+  // Panel drag state
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const draggingRef = useRef(false);
   const dragStartRef = useRef({ mouseX: 0, mouseY: 0, posX: 0, posY: 0 });
   const panelRef = useRef(null);
+
+  // Bubble drag state
+  const [bubbleOffset, setBubbleOffset] = useState({ x: 0, y: 0 });
+  const bubbleDraggingRef = useRef(false);
+  const bubbleDragStartRef = useRef({ mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 });
+  const bubbleHasDraggedRef = useRef(false);
 
   // Scroll to bottom ref
   const messagesEndRef = useRef(null);
@@ -122,10 +128,10 @@ export default function AICompanion() {
     ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
   }, []);
 
-  // Dragging logic
+  // Panel dragging logic
   const onMouseDown = useCallback((e) => {
     if (isMaximized) return;
-    if (e.target.closest('button')) return; // don't drag on buttons
+    if (e.target.closest('button')) return;
     draggingRef.current = true;
     dragStartRef.current = {
       mouseX: e.clientX,
@@ -136,18 +142,42 @@ export default function AICompanion() {
     e.preventDefault();
   }, [isMaximized, position]);
 
+  // Bubble dragging logic
+  const onBubbleMouseDown = useCallback((e) => {
+    bubbleDraggingRef.current = true;
+    bubbleHasDraggedRef.current = false;
+    bubbleDragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      offsetX: bubbleOffset.x,
+      offsetY: bubbleOffset.y,
+    };
+    e.preventDefault();
+  }, [bubbleOffset]);
+
   useEffect(() => {
     const onMouseMove = (e) => {
-      if (!draggingRef.current) return;
-      const dx = e.clientX - dragStartRef.current.mouseX;
-      const dy = e.clientY - dragStartRef.current.mouseY;
-      setPosition({
-        x: dragStartRef.current.posX + dx,
-        y: dragStartRef.current.posY + dy,
-      });
+      if (draggingRef.current) {
+        const dx = e.clientX - dragStartRef.current.mouseX;
+        const dy = e.clientY - dragStartRef.current.mouseY;
+        setPosition({
+          x: dragStartRef.current.posX + dx,
+          y: dragStartRef.current.posY + dy,
+        });
+      }
+      if (bubbleDraggingRef.current) {
+        const dx = e.clientX - bubbleDragStartRef.current.mouseX;
+        const dy = e.clientY - bubbleDragStartRef.current.mouseY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) bubbleHasDraggedRef.current = true;
+        setBubbleOffset({
+          x: bubbleDragStartRef.current.offsetX + dx,
+          y: bubbleDragStartRef.current.offsetY + dy,
+        });
+      }
     };
     const onMouseUp = () => {
       draggingRef.current = false;
+      bubbleDraggingRef.current = false;
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -167,6 +197,7 @@ export default function AICompanion() {
     setIsOpen(false);
     setIsMaximized(false);
     setPosition({ x: 0, y: 0 });
+    // keep bubbleOffset so ball stays where user dragged it
   };
 
   const minimize = () => {
@@ -287,52 +318,67 @@ export default function AICompanion() {
 
       {/* Floating bubble button */}
       {!isOpen && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9997, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-          <NewBadge description="New: AI Companion — ask anything about your training, courses, attendance, or progress. Powered by GPT-4o." />
-        <button
-          onClick={openPanel}
+        <div
+          onMouseDown={onBubbleMouseDown}
           style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '50%',
-            border: 'none',
-            cursor: 'pointer',
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9997,
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            animation: 'aiPulse 2.5s ease-in-out infinite',
-            flexShrink: 0,
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: '4px',
+            transform: `translate(${bubbleOffset.x}px, ${bubbleOffset.y}px)`,
+            cursor: 'grab',
+            userSelect: 'none',
           }}
-          className="bg-cortex-accent text-white shadow-lg hover:opacity-90 transition-opacity"
-          title="Open AI Assistant"
-          aria-label="Open AI Assistant"
         >
-          <SparkleIcon />
-          {/* Unread badge */}
-          {unreadCount > 0 && (
-            <span
-              style={{
-                position: 'absolute',
-                top: '-4px',
-                right: '-4px',
-                minWidth: '18px',
-                height: '18px',
-                borderRadius: '9px',
-                backgroundColor: '#ef4444',
-                color: '#fff',
-                fontSize: '11px',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 4px',
-                lineHeight: 1,
-              }}
-            >
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
+          <NewBadge description="New: AI Companion — ask anything about your training, courses, attendance, or progress. Powered by GPT-4o." />
+          <button
+            onClick={() => { if (!bubbleHasDraggedRef.current) openPanel(); }}
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              animation: 'aiPulse 2.5s ease-in-out infinite',
+              flexShrink: 0,
+              position: 'relative',
+            }}
+            className="bg-cortex-accent text-white shadow-lg hover:opacity-90 transition-opacity"
+            title="Open AI Assistant"
+            aria-label="Open AI Assistant"
+          >
+            <SparkleIcon />
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  minWidth: '18px',
+                  height: '18px',
+                  borderRadius: '9px',
+                  backgroundColor: '#ef4444',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                }}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
         </div>
       )}
 

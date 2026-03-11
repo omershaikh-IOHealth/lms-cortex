@@ -1,6 +1,6 @@
 // frontend/app/lms/layout.js
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuth, apiFetch } from "@/lib/auth";
@@ -32,8 +32,7 @@ const TRAINER_NAV = [
   { href: "/lms/trainer/messages", label: "Messages",    icon: "message-circle" },
 ];
 
-// ── SVG Icon set ─────────────────────────────────────────────────────────────
-const Icon = ({ name, size = 16 }) => {
+const Icon = ({ name, size = 16, className = "" }) => {
   const icons = {
     grid: (<><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>),
     tag: (<><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>),
@@ -55,9 +54,11 @@ const Icon = ({ name, size = 16 }) => {
     sitemap: (<><rect x="9" y="3" width="6" height="4" rx="1"/><rect x="2" y="17" width="6" height="4" rx="1"/><rect x="9" y="17" width="6" height="4" rx="1"/><rect x="16" y="17" width="6" height="4" rx="1"/><path d="M5 17v-3h14v3"/><line x1="12" y1="7" x2="12" y2="14"/></>),
     settings: (<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></>),
     "chevron-down": (<><polyline points="6 9 12 15 18 9"/></>),
+    "sidebar-toggle": (<><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></>),
+    "chevron-right": (<><polyline points="9 18 15 12 9 6"/></>),
   };
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       {icons[name]}
     </svg>
   );
@@ -65,24 +66,33 @@ const Icon = ({ name, size = 16 }) => {
 
 export default function LMSLayout({ children }) {
   const { user, loading, logout } = useAuth();
-  const { theme, setTheme, isDark } = useTheme();
+  const { setTheme, isDark } = useTheme();
   const router   = useRouter();
   const pathname = usePathname();
 
-  // Org switcher — only for admin/training roles
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [companies,   setCompanies]   = useState([]);
   const [selectedOrg, setSelectedOrg] = useState('');
 
+  // Persist sidebar state
+  useEffect(() => {
+    const saved = localStorage.getItem('lms_sidebar_collapsed');
+    if (saved !== null) setIsCollapsed(saved === 'true');
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem('lms_sidebar_collapsed', String(newState));
+  };
+
   useEffect(() => {
     if (!loading && !user) router.push("/login");
-    if (!loading && user?.role === "support") router.push("/lms/admin");
-    if (!loading && user?.role === "trainer" && pathname === "/lms") router.push("/lms/trainer");
-  }, [user, loading, router, pathname]);
+  }, [user, loading, router]);
 
   const isAdmin   = !loading && user && user.role === "admin";
   const isTrainer = !loading && user && user.role === "trainer";
 
-  // Load companies for org switcher (admin/training only)
   useEffect(() => {
     if (!isAdmin) return;
     const saved = typeof window !== 'undefined' ? localStorage.getItem('lms_selectedOrg') || '' : '';
@@ -100,138 +110,210 @@ export default function LMSLayout({ children }) {
     }
   };
 
+  // Breadcrumbs logic
+  const breadcrumbs = useMemo(() => {
+    const parts = pathname.split('/').filter(p => p && p !== 'lms');
+    return parts.map((p, i) => ({
+      label: p.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      href: '/lms/' + parts.slice(0, i + 1).join('/')
+    }));
+  }, [pathname]);
+
   if (loading || !user)
     return (
       <div className="min-h-screen flex items-center justify-center bg-cortex-bg text-cortex-muted">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-cortex-accent border-t-transparent rounded-full animate-spin" />
-          Loading...
+          <span className="font-medium">Initializing Workspace...</span>
         </div>
       </div>
     );
 
   const nav = isAdmin ? ADMIN_NAV : isTrainer ? TRAINER_NAV : LEARNER_NAV;
 
-  const cycleTheme = () => {
-    if (theme === "system") setTheme("light");
-    else if (theme === "light") setTheme("dark");
-    else setTheme("system");
-  };
-  const themeIcon  = theme === "dark" ? "moon" : theme === "light" ? "sun" : isDark ? "moon" : "sun";
-  const themeLabel = theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System";
+  // Admin sidebar is dark only in LIGHT mode. In dark mode, ALL sidebars stay light (white)
+  // to create an inverse/contrast effect against the dark main content area.
+  const isDarkSidebar = user.role === 'admin' && !isDark;
 
-  const selectedOrgName = companies.find(c => String(c.id) === selectedOrg)?.company_name;
+  const roleStyles = {
+    admin: {
+      accent: "#1e293b",
+      accentRgb: "30 41 59",
+      bg: isDark ? "bg-cortex-bg" : "bg-slate-50",
+      navActive: isDarkSidebar ? "bg-white/10 text-white" : "bg-slate-900 text-white",
+      navInactive: isDarkSidebar ? "text-slate-400 hover:text-white hover:bg-white/5" : "text-slate-700 hover:text-slate-900 hover:bg-blue-50",
+    },
+    trainer: {
+      accent: "#2563eb",
+      accentRgb: "37 99 235",
+      bg: isDark ? "bg-cortex-bg" : "bg-[#f8fafc]",
+      navActive: "bg-blue-600 text-white shadow-sm",
+      navInactive: "text-slate-500 hover:text-blue-600 hover:bg-blue-50",
+    },
+    learner: {
+      accent: "#3b82f6",
+      accentRgb: "59 130 246",
+      bg: isDark ? "bg-cortex-bg" : "bg-[#f1f5f9]",
+      navActive: "bg-blue-500 text-white shadow-md",
+      navInactive: "text-slate-500 hover:text-blue-500 hover:bg-blue-50",
+    }
+  };
+
+  const style = roleStyles[user.role] || roleStyles.learner;
+  // sidebar-light-theme class keeps sidebar white even in dark mode (CSS isolation)
+  const sidebarCls = isDarkSidebar ? "bg-slate-900" : "sidebar-light-theme";
 
   return (
-    <div className="flex h-screen bg-cortex-bg overflow-hidden">
+    <div className={`flex h-screen overflow-hidden ${style.bg}`} style={{ "--cortex-accent": style.accentRgb }}>
       {/* ── Sidebar ── */}
-      <aside className="w-60 flex-shrink-0 bg-cortex-surface border-r border-cortex-border flex flex-col">
-
-        {/* Logo + Org Switcher */}
-        <div className="px-4 py-3 border-b border-cortex-border">
-          {/* App identity */}
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-cortex-accent flex items-center justify-center flex-shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
-            </div>
-            <div>
-              <div className="text-cortex-text font-semibold text-sm leading-tight">Cortex LMS</div>
-              <div className="text-cortex-muted text-[10px] uppercase tracking-wider">{user.role}</div>
-            </div>
+      <aside className={`relative h-screen transition-all duration-300 ease-in-out border-r border-cortex-border flex flex-col ${isCollapsed ? 'w-16' : 'w-64'} ${sidebarCls}`}>
+        
+        {/* Logo Section */}
+        <div className={`px-4 py-6 flex items-center gap-3 overflow-hidden ${isCollapsed ? 'justify-center' : ''}`}>
+          <div className="w-8 h-8 rounded-lg bg-cortex-accent flex items-center justify-center flex-shrink-0 shadow-lg shadow-cortex-accent/20">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
           </div>
-
-          {/* Org Switcher — admin/training only */}
-          {isAdmin && (
-            <div className="relative">
-              <select
-                value={selectedOrg}
-                onChange={e => changeOrg(e.target.value)}
-                className="w-full appearance-none bg-cortex-bg border border-cortex-border rounded-lg pl-3 pr-8 py-1.5 text-cortex-text text-xs focus:outline-none focus:border-cortex-accent cursor-pointer truncate"
-              >
-                <option value="">All Organisations</option>
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.company_name}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-cortex-muted">
-                <Icon name="chevron-down" size={12} />
-              </div>
+          {!isCollapsed && (
+            <div className="animate-fade-in">
+              <div className={`font-bold text-lg leading-tight ${isDarkSidebar ? 'text-white' : 'text-cortex-text'}`}>Cortex</div>
+              <div className={`text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 ${isDarkSidebar ? 'text-slate-400' : 'text-cortex-muted'}`}>{user.role}</div>
             </div>
           )}
         </div>
 
-        {/* Nav links */}
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
           {nav.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/lms/admin" &&
-               item.href !== "/lms/learn" &&
-               item.href !== "/lms/trainer" &&
-               pathname.startsWith(item.href));
+            const active = pathname === item.href || (item.href !== "/lms/admin" && item.href !== "/lms/learn" && item.href !== "/lms/trainer" && pathname.startsWith(item.href));
             return (
               <Link key={item.href} href={item.href}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${
-                  active
-                    ? "bg-cortex-accent text-white shadow-sm"
-                    : "text-cortex-muted hover:text-cortex-text hover:bg-cortex-bg"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group relative ${
+                  active ? style.navActive : style.navInactive
                 }`}>
-                <Icon name={item.icon} size={15} />
-                <span>{item.label}</span>
+                <Icon name={item.icon} size={18} className={`transition-transform duration-200 ${active ? 'scale-110' : 'group-hover:scale-110'}`} />
+                {!isCollapsed && <span className="truncate animate-fade-in">{item.label}</span>}
+                {isCollapsed && (
+                  <div className={`absolute left-14 shadow-md px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${
+                    isDark ? 'bg-white text-slate-900 border border-slate-200' : 'bg-slate-800 text-white border border-slate-700'
+                  }`}>
+                    {item.label}
+                  </div>
+                )}
               </Link>
             );
           })}
         </nav>
 
-        {/* Bottom actions */}
-        <div className="p-3 border-t border-cortex-border space-y-1">
-          <button onClick={cycleTheme}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-cortex-muted hover:text-cortex-text hover:bg-cortex-bg transition">
-            <Icon name={themeIcon} size={14} />
-            <span>{themeLabel} mode</span>
-          </button>
-          <div className="px-3 py-1 text-[11px] text-cortex-muted truncate">{user.email}</div>
-          <Link href="/lms/settings"
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition ${
-              pathname === '/lms/settings'
-                ? 'text-cortex-accent bg-cortex-accent/10'
-                : 'text-cortex-muted hover:text-cortex-text hover:bg-cortex-bg'
+        {/* Sidebar Footer */}
+        <div className={`p-3 border-t ${isDarkSidebar ? 'border-white/10' : 'border-cortex-border'} space-y-1`}>
+          <button onClick={toggleSidebar}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition ${
+              isDarkSidebar ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-blue-50'
             }`}>
-            <Icon name="settings" size={14} />
-            Settings
+            <Icon name="sidebar-toggle" size={16} className={isCollapsed ? 'rotate-180' : ''} />
+            {!isCollapsed && <span className="animate-fade-in">Collapse Sidebar</span>}
+          </button>
+
+          <Link href="/lms/settings"
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition ${
+              pathname === '/lms/settings'
+                ? 'bg-cortex-accent text-white'
+                : isDarkSidebar ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-blue-50'
+            }`}>
+            <Icon name="settings" size={16} />
+            {!isCollapsed && <span className="animate-fade-in">Settings</span>}
           </Link>
+
+          <button
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition relative group ${
+              isDarkSidebar ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-blue-50'
+            }`}>
+            <Icon name={isDark ? 'sun' : 'moon'} size={16} />
+            {!isCollapsed && <span className="animate-fade-in">{isDark ? 'Light Mode' : 'Dark Mode'}</span>}
+            {isCollapsed && (
+              <div className={`absolute left-14 shadow-md px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${
+                isDark ? 'bg-white text-slate-900 border border-slate-200' : 'bg-slate-800 text-white border border-slate-700'
+              }`}>
+                {isDark ? 'Light Mode' : 'Dark Mode'}
+              </div>
+            )}
+          </button>
+
           <button onClick={logout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-cortex-muted hover:text-cortex-danger hover:bg-cortex-danger/10 transition">
-            <Icon name="log-out" size={14} />
-            Sign Out
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-red-400 hover:text-red-500 hover:bg-red-500/10 transition">
+            <Icon name="log-out" size={16} />
+            {!isCollapsed && <span className="animate-fade-in">Sign Out</span>}
           </button>
         </div>
       </aside>
 
-      {/* ── Main area ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex-shrink-0 h-12 bg-cortex-surface border-b border-cortex-border flex items-center justify-between px-6">
-          <div className="flex items-center gap-2 text-sm text-cortex-muted">
-            {nav.find(n => pathname === n.href || (n.href !== '/lms/admin' && n.href !== '/lms/learn' && n.href !== '/lms/trainer' && pathname.startsWith(n.href)))?.label || 'LMS'}
-            {isAdmin && selectedOrgName && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-cortex-accent/15 text-cortex-accent font-medium">
-                {selectedOrgName}
-              </span>
+      {/* ── Main Canvas ── */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Header */}
+        <header className="h-16 flex-shrink-0 bg-white/80 backdrop-blur-md border-b border-cortex-border flex items-center justify-between px-8 z-10">
+          <div className="flex items-center gap-4">
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-2 text-sm">
+              <Link href="/lms" className="text-cortex-muted hover:text-cortex-accent transition">LMS</Link>
+              {breadcrumbs.map((bc, i) => (
+                <div key={bc.href} className="flex items-center gap-2">
+                  <Icon name="chevron-right" size={12} className="text-cortex-border" />
+                  <Link href={bc.href} className={`transition ${i === breadcrumbs.length - 1 ? 'font-semibold text-cortex-text pointer-events-none' : 'text-cortex-muted hover:text-cortex-accent'}`}>
+                    {bc.label}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            {/* Org Switcher (Admin only) */}
+            {isAdmin && !isCollapsed && (
+              <div className="ml-4 pl-4 border-l border-cortex-border animate-fade-in">
+                <select
+                  value={selectedOrg}
+                  onChange={e => changeOrg(e.target.value)}
+                  className="bg-slate-100 border-none rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-cortex-accent/20 cursor-pointer"
+                >
+                  <option value="">All Organisations</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-5">
+            {/* Dark / Light mode toggle */}
+            <button
+              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="w-8 h-8 flex items-center justify-center rounded-xl text-cortex-muted hover:text-cortex-text hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+            >
+              <Icon name={isDark ? 'sun' : 'moon'} size={16} />
+            </button>
+            <div className="hidden md:flex flex-col items-end">
+              <span className="text-sm font-bold text-cortex-text leading-tight">{user.display_name || user.email.split('@')[0]}</span>
+              <span className="text-[10px] font-bold text-cortex-accent uppercase tracking-wider">{user.role}</span>
+            </div>
             {(user.role === "learner" || user.role === "trainer") && <NotificationBell />}
-            <div className="h-7 w-7 rounded-full bg-cortex-accent/20 text-cortex-accent flex items-center justify-center text-xs font-bold">
-              {(user.display_name || user.email)[0].toUpperCase()}
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-cortex-accent to-blue-600 p-[2px] shadow-lg shadow-cortex-accent/20">
+              <div className="h-full w-full rounded-full bg-white flex items-center justify-center text-sm font-bold text-cortex-accent">
+                {(user.display_name || user.email)[0].toUpperCase()}
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-cortex-bg">{children}</main>
+        {/* Content Area */}
+        <main className="flex-1 overflow-y-auto relative scroll-smooth bg-transparent">
+          <div className="max-w-[1400px] mx-auto p-8 animate-slide-up">
+            {children}
+          </div>
+        </main>
       </div>
       <AICompanion />
     </div>
