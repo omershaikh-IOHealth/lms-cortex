@@ -38,7 +38,7 @@ export async function PUT(request, { params }) {
 
     // Sync Google Calendar event if it exists
     if (session.google_calendar_event_id) {
-      updateCalendarEvent(user.id, session.google_calendar_event_id, session).catch(console.error);
+      updateCalendarEvent(session.google_calendar_event_id, session).catch(console.error);
     }
 
     return NextResponse.json(session);
@@ -63,7 +63,7 @@ export async function DELETE(request, { params }) {
 
     // Clean up Google Calendar event (best effort, don't block)
     if (session?.google_calendar_event_id) {
-      deleteCalendarEvent(user.id, session.google_calendar_event_id).catch(console.error);
+      deleteCalendarEvent(session.google_calendar_event_id).catch(console.error);
     }
 
     return NextResponse.json({ ok: true });

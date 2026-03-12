@@ -88,7 +88,7 @@ export async function POST(request) {
     const session = result.rows[0];
 
     // Create Google Calendar event (best effort, don't block on failure)
-    const cal = await createCalendarEvent(user.id, session).catch(() => null);
+    const cal = await createCalendarEvent(session).catch(() => null);
 
     // Update session with Google links if available
     if (cal) {

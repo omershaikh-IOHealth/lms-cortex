@@ -13,9 +13,9 @@ export async function POST(request, { params }) {
     const session = r.rows[0];
     if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
 
-    const cal = await createCalendarEvent(user.id, session);
+    const cal = await createCalendarEvent(session);
     if (!cal) {
-      return NextResponse.json({ error: 'Google Calendar not connected. Please connect your Google account first.' }, { status: 400 });
+      return NextResponse.json({ error: 'Could not create Google Calendar event. Check GOOGLE_SERVICE_ACCOUNT_JSON configuration.' }, { status: 400 });
     }
 
     const updated = await pool.query(`

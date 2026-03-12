@@ -1,7 +1,6 @@
 // app/lms/admin/physical-training/page.js
 'use client';
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { apiFetch, useAuth } from '@/lib/auth';
 import NewBadge from '@/components/NewBadge';
 
@@ -94,10 +93,6 @@ export default function TrainingSessionsPage() {
 
 function TrainingSessionsInner() {
   const { user } = useAuth();
-  const searchParams   = useSearchParams();
-  const googleConnected = searchParams.get('google_connected') === '1';
-  const googleError     = searchParams.get('google_error');
-  const [googleBanner, setGoogleBanner] = useState(googleConnected || !!googleError);
 
   // ── Remote data ──────────────────────────────────────────────────────────
   const [sessions,     setSessions]     = useState([]);
@@ -602,21 +597,6 @@ function TrainingSessionsInner() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Google banner */}
-      {googleBanner && (
-        <div className={`flex-shrink-0 border-b px-4 py-2 text-sm flex items-center justify-between ${
-          googleError
-            ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-700 dark:text-red-400'
-            : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400'
-        }`}>
-          {googleError
-            ? <span>❌ Google Calendar connection failed ({googleError}). Check server logs.</span>
-            : <span>✅ Google Calendar connected! New sessions will automatically get a Meet link.</span>
-          }
-          <button onClick={() => setGoogleBanner(false)} className="ml-3 opacity-70 hover:opacity-100">✕</button>
-        </div>
-      )}
-
       {/* Calendar toolbar */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-cortex-border bg-cortex-surface gap-4">
         {/* Left: nav + title */}
@@ -671,18 +651,6 @@ function TrainingSessionsInner() {
               </button>
             ))}
           </div>
-
-          {/* Google connect */}
-          <a href="/api/auth/google/connect"
-            className="hidden sm:flex items-center gap-1.5 text-xs text-cortex-muted hover:text-cortex-text transition border border-cortex-border rounded-lg px-2.5 py-1.5">
-            <svg width="12" height="12" viewBox="0 0 48 48">
-              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-            </svg>
-            Google Cal
-          </a>
 
           <button onClick={() => openCreate()}
             className="bg-cortex-accent text-white text-sm px-4 py-1.5 rounded-lg hover:opacity-90 transition font-medium whitespace-nowrap">
