@@ -47,7 +47,7 @@ export async function POST(request, { params }) {
   const { authError, user } = await requireRole(request, 'admin');
   if (authError) return authError;
 
-  const { title, pass_threshold, max_attempts, is_active, questions } = await request.json();
+  const { title, pass_threshold, max_attempts, is_active, is_mandatory, questions } = await request.json();
   const pool = getPool();
   const client = await pool.connect();
 
@@ -58,9 +58,9 @@ export async function POST(request, { params }) {
     await client.query('DELETE FROM lms_quizzes WHERE course_id = $1', [params.id]);
 
     const qr = await client.query(
-      `INSERT INTO lms_quizzes (course_id, title, pass_threshold, max_attempts, is_active, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [params.id, title || 'Course Quiz', pass_threshold ?? 70, max_attempts ?? 3, is_active !== false, user.id]
+      `INSERT INTO lms_quizzes (course_id, title, pass_threshold, max_attempts, is_active, is_mandatory, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [params.id, title || 'Course Quiz', pass_threshold ?? 70, max_attempts ?? 3, is_active !== false, is_mandatory === true, user.id]
     );
     const quiz = qr.rows[0];
 

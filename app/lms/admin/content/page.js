@@ -59,9 +59,20 @@ export default function ContentPage() {
   const [assignedIds,  setAssignedIds]  = useState(new Set());
   const [assignSaving, setAssignSaving] = useState({});
 
+  // Course-level assignment state
+  const [courseAssignments,  setCourseAssignments]  = useState([]);
+  const [caCompanies,        setCaCompanies]        = useState([]);
+  const [caFacilities,       setCaFacilities]       = useState([]);
+  const [caDepartments,      setCaDepartments]      = useState([]);
+  const [caScopeType,        setCaScopeType]        = useState('organization');
+  const [caScopeId,          setCaScopeId]          = useState('');
+  const [caDueDate,          setCaDueDate]          = useState('');
+  const [caAssigning,        setCaAssigning]        = useState(false);
+  const [caResult,           setCaResult]           = useState(null);
+
   const [quizData,    setQuizData]    = useState(null);
   const [quizLoading, setQuizLoading] = useState(false);
-  const [quizForm,    setQuizForm]    = useState({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+  const [quizForm,    setQuizForm]    = useState({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, is_mandatory: false, questions: [] });
   const [quizSaving,  setQuizSaving]  = useState(false);
   const [quizError,   setQuizError]   = useState('');
 
@@ -102,6 +113,7 @@ export default function ContentPage() {
             pass_threshold: d.pass_threshold,
             max_attempts: d.max_attempts,
             is_active: d.is_active,
+            is_mandatory: d.is_mandatory || false,
             questions: d.questions.map(q => ({
               id: q.id,
               question_text: q.question_text,
@@ -110,7 +122,7 @@ export default function ContentPage() {
             })),
           });
         } else {
-          setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+          setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, is_mandatory: false, questions: [] });
         }
         setQuizLoading(false);
       });
@@ -118,11 +130,28 @@ export default function ContentPage() {
     if (type === 'assign_course') {
       setAssignTypeId('');
       setAssignedIds(new Set());
+      setCaScopeType('organization');
+      setCaScopeId('');
+      setCaDueDate('');
+      setCaResult(null);
       if (assignTypes.length === 0) {
         apiFetch('/api/lms/admin/learner-types').then(r => r?.json()).then(d => {
           if (d) setAssignTypes(d.filter(t => t.is_active));
         });
       }
+      // Load dropdown data for course-level assignment
+      Promise.all([
+        apiFetch('/api/lms/admin/companies').then(r => r?.json()),
+        apiFetch('/api/lms/admin/facilities').then(r => r?.json()),
+        apiFetch('/api/lms/admin/departments').then(r => r?.json()),
+      ]).then(([co, fa, de]) => {
+        if (co) setCaCompanies(co);
+        if (fa) setCaFacilities(fa);
+        if (de) setCaDepartments(de.filter(d => !d.parent_id));
+      });
+      apiFetch(`/api/lms/admin/content/courses/${data.id}/assign`).then(r => r?.json()).then(d => {
+        if (d) setCourseAssignments(d);
+      });
     }
   };
 
@@ -269,7 +298,7 @@ export default function ContentPage() {
     if (!confirm('Delete this quiz?')) return;
     await apiFetch(`/api/lms/admin/content/courses/${panel.data.id}/quiz`, { method: 'DELETE' });
     setQuizData(null);
-    setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, questions: [] });
+    setQuizForm({ title: 'Course Quiz', pass_threshold: 70, max_attempts: 3, is_active: true, is_mandatory: false, questions: [] });
   };
 
   const toggleLessonActive = async (lesson) => {
@@ -331,6 +360,33 @@ export default function ContentPage() {
     } finally {
       setAssignSaving(p => ({ ...p, [lessonId]: false }));
     }
+  };
+
+  const handleCourseAssign = async () => {
+    if (!caScopeId) return;
+    setCaAssigning(true); setCaResult(null);
+    try {
+      const r = await apiFetch(`/api/lms/admin/content/courses/${panel.data.id}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ assigned_to_type: caScopeType, assigned_to_id: Number(caScopeId), due_date: caDueDate || null }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setCaResult(d);
+      // Refresh assignments list
+      const updated = await apiFetch(`/api/lms/admin/content/courses/${panel.data.id}/assign`).then(res => res?.json());
+      if (updated) setCourseAssignments(updated);
+      setCaScopeId(''); setCaDueDate('');
+    } catch (e) { setCaResult({ error: e.message }); }
+    finally { setCaAssigning(false); }
+  };
+
+  const caScopeOptions = () => {
+    if (caScopeType === 'organization') return caCompanies.map(c => ({ id: c.id, name: c.company_name }));
+    if (caScopeType === 'facility')     return caFacilities;
+    if (caScopeType === 'department')   return caDepartments;
+    if (caScopeType === 'learner_type') return assignTypes;
+    return [];
   };
 
   const rootSections    = tree.filter(s => !s.parent_section_id);
@@ -764,6 +820,20 @@ export default function ContentPage() {
                                    </button>
                                 </div>
                              </div>
+                             <div className="mt-6 pt-5 border-t border-white/10 flex items-center justify-between">
+                               <div>
+                                 <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 mb-0.5">Required for Completion</p>
+                                 <p className="text-[11px] text-blue-300/70">When enabled, learners must pass this quiz to complete the course</p>
+                               </div>
+                               <div className="flex gap-3">
+                                 {[{v: false, l: 'Optional'}, {v: true, l: 'Required'}].map(({v, l}) => (
+                                   <button key={l} type="button" onClick={() => setQuizForm(p => ({ ...p, is_mandatory: v }))}
+                                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all ${quizForm.is_mandatory === v ? 'bg-white text-blue-600 shadow-lg' : 'bg-white/10 text-blue-200 hover:bg-white/20'}`}>
+                                     {l}
+                                   </button>
+                                 ))}
+                               </div>
+                             </div>
                            </div>
                         </div>
 
@@ -904,6 +974,62 @@ export default function ContentPage() {
               {/* Assignment Panel */}
               {isPanelAssign && (
                 <div className="flex flex-col h-full animate-fade-in">
+
+                  {/* ── Course-Level Assignment ─────────────────────────────── */}
+                  <div className="px-10 py-6 border-b border-slate-100 bg-slate-50/30">
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">Assign Course to Group</h2>
+                    <div className="space-y-3">
+                      {/* Scope type selector */}
+                      <div className="flex gap-2 flex-wrap">
+                        {[['organization','Organization'],['facility','Facility'],['department','Department'],['learner_type','Learner Type']].map(([v,l]) => (
+                          <button key={v} onClick={() => { setCaScopeType(v); setCaScopeId(''); }}
+                            className={`px-4 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wide border-2 transition-all ${
+                              caScopeType === v ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
+                            }`}>{l}</button>
+                        ))}
+                      </div>
+                      {/* Scope dropdown + due date + assign button */}
+                      <div className="flex gap-2 flex-wrap items-end">
+                        <div className="flex-1 min-w-[180px]">
+                          <select value={caScopeId} onChange={e => setCaScopeId(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600">
+                            <option value="">— Select {caScopeType.replace('_',' ')} —</option>
+                            {caScopeOptions().map(o => (
+                              <option key={o.id} value={o.id}>{o.name || o.company_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <input type="date" value={caDueDate} onChange={e => setCaDueDate(e.target.value)}
+                            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                            title="Optional due date" />
+                        </div>
+                        <button onClick={handleCourseAssign} disabled={!caScopeId || caAssigning}
+                          className="px-6 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-wide hover:bg-blue-700 disabled:opacity-40 transition-all shadow-md active:scale-95">
+                          {caAssigning ? 'Assigning…' : 'Assign'}
+                        </button>
+                      </div>
+                      {/* Result feedback */}
+                      {caResult && (
+                        caResult.error
+                          ? <p className="text-xs text-red-500 font-medium">{caResult.error}</p>
+                          : <p className="text-xs text-green-600 font-bold">
+                              ✓ Assigned to {caResult.assigned_to_count} user{caResult.assigned_to_count !== 1 ? 's' : ''} across {caResult.lesson_count} lesson{caResult.lesson_count !== 1 ? 's' : ''}
+                            </p>
+                      )}
+                      {/* Existing assignments */}
+                      {courseAssignments.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {courseAssignments.map(a => (
+                            <span key={a.id} className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg capitalize">
+                              {a.assigned_to_type.replace('_',' ')}: {a.assigned_to_name || a.assigned_to_id}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                    <header className="px-10 py-8 border-b border-slate-100 bg-blue-50/10">
                       <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4">Select Staff Type</h2>
                       <div className="flex flex-wrap gap-2">
