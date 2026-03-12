@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 
 // ─── CSV/XLSX parser ─────────────────────────────────────────────────────────
 function parseCSV(text) {
@@ -83,6 +83,40 @@ function CellSelect({ value, onChange, options }) {
   );
 }
 
+// ─── Password field with eye toggle ──────────────────────────────────────────
+function PasswordField({ value, className }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative flex items-center">
+      <input
+        type={show ? 'text' : 'password'}
+        readOnly
+        value={value}
+        className={`pr-7 font-mono ${className || 'bg-transparent border-0 outline-none text-cortex-text text-xs px-1 py-0.5 w-full'}`}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        className="absolute right-1 text-cortex-muted hover:text-cortex-text transition"
+        tabIndex={-1}
+      >
+        {show ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BulkImportModal({
   title,
@@ -98,10 +132,11 @@ export default function BulkImportModal({
   const [extraVals, setExtraVals] = useState(() =>
     (extras || []).reduce((a, e) => ({ ...a, [e.key]: e.defaultValue ?? '' }), {})
   );
-  const [isDragging, setIsDragging] = useState(false);
-  const [fileError,  setFileError]  = useState('');
-  const [importing,  setImporting]  = useState(false);
-  const [results,    setResults]    = useState(null);
+  const [isDragging,           setIsDragging]           = useState(false);
+  const [fileError,            setFileError]            = useState('');
+  const [importing,            setImporting]            = useState(false);
+  const [results,              setResults]              = useState(null);
+  const [instructionsDismissed, setInstructionsDismissed] = useState(false);
   const fileRef = useRef();
 
   function makeEmptyRow(cols) {
@@ -199,6 +234,33 @@ export default function BulkImportModal({
 
           {step !== 'results' && (
             <div className="px-6 pt-4 pb-3 flex-shrink-0 space-y-3">
+
+              {/* Instruction panel */}
+              {!instructionsDismissed && (
+                <div className="border border-blue-500/40 bg-blue-950/20 rounded-xl px-4 py-3 flex gap-3">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-blue-400 mb-1">Required columns:</p>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {columns.map(c => (
+                        <span key={c.key} className="font-mono font-bold text-[11px] bg-blue-900/30 text-blue-300 px-1.5 py-0.5 rounded">
+                          {c.label}{c.required ? ' *' : ''}
+                        </span>
+                      ))}
+                    </div>
+                    <ul className="space-y-0.5">
+                      <li className="text-[11px] text-amber-400">⚠ Organization name must match exactly — no extra spaces before or after</li>
+                      <li className="text-[11px] text-amber-400">⚠ Department name must match exactly — check spelling carefully</li>
+                      <li className="text-[11px] text-cortex-muted">• Do not rename or reorder columns</li>
+                      <li className="text-[11px] text-cortex-muted">• Save file as .xlsx format before uploading</li>
+                    </ul>
+                  </div>
+                  <button onClick={() => setInstructionsDismissed(true)} className="flex-shrink-0 text-cortex-muted hover:text-cortex-text transition text-sm leading-none">✕</button>
+                </div>
+              )}
+
               {/* Upload zone */}
               <div
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -215,9 +277,11 @@ export default function BulkImportModal({
                 </div>
                 <button
                   type="button"
+                  title="Download Template First"
                   onClick={e => { e.stopPropagation(); downloadCSV(templateFilename, columns, templateSample); }}
-                  className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-cortex-border text-cortex-muted hover:text-cortex-text hover:bg-cortex-bg transition whitespace-nowrap">
-                  ↓ Download template
+                  style={{ backgroundColor: '#F59E0B' }}
+                  className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg text-white hover:opacity-90 transition whitespace-nowrap font-medium">
+                  ↓ Download Template
                 </button>
                 <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                   onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }} />
@@ -229,7 +293,7 @@ export default function BulkImportModal({
                 </div>
               )}
 
-              {/* Extra fields (e.g., default password) */}
+              {/* Extra fields */}
               {extras?.length > 0 && (
                 <div className="flex items-center gap-4 flex-wrap">
                   {extras.map(ext => (
@@ -361,7 +425,7 @@ export default function BulkImportModal({
               {/* Per-row results */}
               <div className="space-y-1.5">
                 {results.results?.map((r, i) => (
-                  <div key={i} className={`flex items-start gap-3 px-4 py-2.5 rounded-lg text-sm border ${
+                  <div key={i} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm border ${
                     r.success
                       ? 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-900/30'
                       : 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30'
@@ -370,16 +434,22 @@ export default function BulkImportModal({
                     <span className={`font-medium flex-shrink-0 ${r.success ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                       {r.success ? '✓' : '✗'}
                     </span>
-                    <span className="text-cortex-muted truncate">{r.email || r.name || '—'}</span>
+                    <span className="text-cortex-muted truncate flex-1">{r.email || r.name || '—'}</span>
+                    {r.success && r.generated_password && (
+                      <div className="flex items-center gap-1 flex-shrink-0 bg-cortex-bg border border-cortex-border rounded px-2 py-0.5">
+                        <span className="text-[10px] text-cortex-muted mr-1">pw:</span>
+                        <PasswordField value={r.generated_password} className="font-mono text-[11px] text-cortex-text bg-transparent border-0 outline-none w-28 pr-5" />
+                      </div>
+                    )}
                     {r.success && r.emailSent === false && (
-                      <span className="text-orange-500 text-[11px] flex-shrink-0 ml-auto">
+                      <span className="text-orange-500 text-[11px] flex-shrink-0">
                         ✉ Email failed{r.emailError ? ` — ${r.emailError}` : ''}
                       </span>
                     )}
                     {r.success && r.emailSent === true && (
-                      <span className="text-blue-500 text-[11px] flex-shrink-0 ml-auto">✉ Invited</span>
+                      <span className="text-blue-500 text-[11px] flex-shrink-0">✉ Invited</span>
                     )}
-                    {!r.success && <span className="text-red-500 text-xs ml-auto flex-shrink-0">{r.error}</span>}
+                    {!r.success && <span className="text-red-500 text-xs flex-shrink-0">{r.error}</span>}
                   </div>
                 ))}
               </div>

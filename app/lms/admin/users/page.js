@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '@/lib/auth';
 import BulkImportModal from '@/components/BulkImportModal';
+import DeptFuzzyModal, { fuzzyMatch } from '@/components/DeptFuzzyModal';
 import NewBadge from '@/components/NewBadge';
 
 const ROLE_STYLES = {
@@ -24,11 +25,7 @@ const USER_BULK_COLUMNS = [
   { key: 'learner_type',   label: 'Learner Type',     placeholder: 'Learner role only',                         minWidth: 130 },
 ];
 
-const USER_BULK_EXTRAS = [
-  { key: 'default_password', label: 'Default Password:', type: 'password',
-    placeholder: 'Used when password column is blank',
-    hint: '(applies to rows without a password)' },
-];
+const USER_BULK_EXTRAS = [];
 
 const USER_BULK_SAMPLE = ['jane@example.com', 'Jane Smith', 'EMP001', 'learner', 'General Hospital', 'Paediatrics', '', 'Nurse'];
 
@@ -63,6 +60,8 @@ export default function UsersPage() {
   const [showBulk,        setShowBulk]        = useState(false);
   const [backfilling,     setBackfilling]     = useState(false);
   const [backfillResult,  setBackfillResult]  = useState(null);
+  const [fuzzyPending,    setFuzzyPending]    = useState(null); // { rows, ambiguous }
+  const [showFuzzy,       setShowFuzzy]       = useState(false);
   const [selectedUsers, setSelectedUsers] = useState(new Set());
   const [showAddPw,     setShowAddPw]     = useState(false);
   const [showEditPw,    setShowEditPw]    = useState(false);
@@ -308,15 +307,70 @@ export default function UsersPage() {
     });
   };
 
-  const handleBulkImportUsers = async (rows, extraVals) => {
+  const submitBulkRows = async (rows) => {
     const r = await apiFetch('/api/lms/admin/users/bulk', {
       method: 'POST',
-      body: JSON.stringify({ rows, default_password: extraVals.default_password || undefined }),
+      body: JSON.stringify({ rows }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Import failed');
-    load(); // refresh list in background
+    load();
     return data;
+  };
+
+  const handleBulkImportUsers = async (rows) => {
+    // Check each row's department for fuzzy matches
+    const deptNames = departments.map(d => d.name);
+    const ambiguous = [];
+
+    rows.forEach((row, idx) => {
+      const dept = row.department?.toString().trim();
+      if (!dept) return;
+      const exact = deptNames.some(d => d.toLowerCase().trim() === dept.toLowerCase().trim());
+      if (exact) return;
+      const match = fuzzyMatch(dept, deptNames);
+      ambiguous.push({ rowIndex: idx, rowEmail: row.email, inputDept: dept, suggestion: match?.match || null });
+    });
+
+    if (ambiguous.length > 0) {
+      // Return a Promise that resolves after the user makes decisions
+      return new Promise((resolve, reject) => {
+        setFuzzyPending({ rows, ambiguous, resolve, reject });
+        setShowFuzzy(true);
+      });
+    }
+    return submitBulkRows(rows);
+  };
+
+  const handleFuzzyResolve = async (decisions) => {
+    setShowFuzzy(false);
+    const { rows, resolve, reject } = fuzzyPending;
+    setFuzzyPending(null);
+
+    // Apply decisions to rows
+    const mutated = rows.map((row, idx) => {
+      const decision = decisions.find(d => d.rowIndex === idx);
+      if (!decision) return row;
+      if (decision.action === 'skip') return null;
+      if (decision.action === 'use_suggestion' && decision.resolvedDept) {
+        return { ...row, department: decision.resolvedDept };
+      }
+      return row;
+    }).filter(Boolean);
+
+    try {
+      const result = await submitBulkRows(mutated);
+      resolve(result);
+    } catch (err) {
+      reject(err);
+    }
+  };
+
+  const handleFuzzyCancel = () => {
+    setShowFuzzy(false);
+    const { reject } = fuzzyPending;
+    setFuzzyPending(null);
+    reject(new Error('Import cancelled'));
   };
 
   // ── Shared field components ────────────────────────────────────────────────
@@ -734,6 +788,15 @@ export default function UsersPage() {
           templateSample={USER_BULK_SAMPLE}
           onImport={handleBulkImportUsers}
           onClose={() => setShowBulk(false)}
+        />
+      )}
+
+      {/* ── Department Fuzzy Match Modal ─────────────────────────────────────── */}
+      {showFuzzy && fuzzyPending && (
+        <DeptFuzzyModal
+          ambiguousRows={fuzzyPending.ambiguous}
+          onResolve={handleFuzzyResolve}
+          onCancel={handleFuzzyCancel}
         />
       )}
 

@@ -5,22 +5,28 @@ import { requireRole } from '@/lib/server-auth';
 import { generateStaffId } from '@/lib/generateStaffId';
 import { sendInvitationEmail } from '@/lib/email';
 
+// Generate password: SGH!{BRANCH_CODE}{NUMBERS_FROM_STAFF_ID}
+function generatePassword(companyCode, staffId) {
+  const branch  = (companyCode || '').toUpperCase();
+  const numbers = (staffId || '').replace(/\D/g, '');
+  return `SGH!${branch}${numbers}`;
+}
+
 // POST /api/lms/admin/users/bulk
-// Body: { rows: [{email, display_name, password, role, staff_id,
-//                 organization, department, sub_department, learner_type}],
-//         default_password: string }
+// Body: { rows: [{email, display_name, role, staff_id,
+//                 organization, department, sub_department, learner_type}] }
 export async function POST(request) {
   const { authError } = await requireRole(request, 'admin');
   if (authError) return authError;
 
-  const { rows = [], default_password } = await request.json();
+  const { rows = [] } = await request.json();
   if (!rows.length) return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
 
   const pool = getPool();
 
   // Pre-load lookup tables
   const [companies, departments, learnerTypes] = await Promise.all([
-    pool.query('SELECT id, company_name FROM companies').then(r => r.rows),
+    pool.query('SELECT id, company_name, company_code FROM companies').then(r => r.rows),
     pool.query('SELECT id, name, parent_id, company_id FROM lms_departments').then(r => r.rows),
     pool.query('SELECT id, name FROM lms_learner_types WHERE is_active = true').then(r => r.rows),
   ]);
@@ -46,20 +52,19 @@ export async function POST(request) {
 
     const email = row.email?.toString().toLowerCase().trim();
     const role  = (row.role?.toString().toLowerCase().trim()) || 'learner';
-    const pwd   = row.password?.toString().trim() || default_password;
 
     // Validate required fields
     if (!email) { results.push({ row: rowNum, email: '—', success: false, error: 'Email is required' }); continue; }
-    if (!pwd)   { results.push({ row: rowNum, email, success: false, error: 'Password is required (set a default password above)' }); continue; }
     if (!validRoles.includes(role)) { results.push({ row: rowNum, email, success: false, error: `Invalid role "${role}"` }); continue; }
 
     // Resolve org/dept
-    let company_id = null, department_id = null, sub_department_id = null, learner_type_id = null;
+    let company_id = null, company_code = null, department_id = null, sub_department_id = null, learner_type_id = null;
 
     if (row.organization?.toString().trim()) {
       const co = findCompany(row.organization);
       if (!co) { results.push({ row: rowNum, email, success: false, error: `Organisation "${row.organization}" not found` }); continue; }
-      company_id = co.id;
+      company_id   = co.id;
+      company_code = co.company_code;
     }
 
     if (row.department?.toString().trim()) {
@@ -94,6 +99,9 @@ export async function POST(request) {
         resolvedStaffId = await generateStaffId(client, email, row.display_name?.toString().trim());
       }
 
+      // Auto-generate password: SGH!{BRANCH}{DIGITS_FROM_STAFF_ID}
+      const pwd = generatePassword(company_code, resolvedStaffId);
+
       const hash = await bcrypt.hash(pwd, 10); // salt 10 for speed in bulk ops
       const r = await client.query(`
         INSERT INTO auth_users
@@ -126,7 +134,7 @@ export async function POST(request) {
         resolvedStaffId
       );
 
-      results.push({ row: rowNum, email, success: true, emailSent, emailError: emailError || null });
+      results.push({ row: rowNum, email, success: true, generated_password: pwd, emailSent, emailError: emailError || null });
     } catch (err) {
       await client.query('ROLLBACK');
       const msg = err.code === '23505' ? 'Email already exists' : err.message;
