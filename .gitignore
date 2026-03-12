@@ -1,3 +1,8 @@
 node_modules
 .next
 .env
+
+# Claude/AI context - do not push
+.claude/
+.swarm/
+*.claude-flow*
